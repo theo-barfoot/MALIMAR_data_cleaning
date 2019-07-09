@@ -7,14 +7,14 @@ def get_scans(MR_session):
                 ((d.get('parameters/orientation', '') == 'Tra') and (d['frames'] > 100))
         ):
             if d.get('parameters/sequence', '')[-5:] == 'fl3d2':
-                if (d['parameters/te'] > 3) or ('IN_PHASE' in d['parameters/imageType']):
+                if (d.get('parameters/te', 0) > 3) or ('IN_PHASE' in d.get('parameters/imageType', '')):
                     print(scan, 'in')
-                elif (d.get('parameters/scanOptions', '') == 'DIXW'):  # or ('WATER' in d['parameters/imageType']):
+                elif d.get('parameters/scanOptions', '') == 'DIXW':  # or ('WATER' in d['parameters/imageType']):
                     print(scan, 'water')
-                elif (d.get('parameters/scanOptions', '') == 'DIXF'):  # or ('FAT' in d['parameters/imageType']):
+                elif d.get('parameters/scanOptions', '') == 'DIXF':  # or ('FAT' in d['parameters/imageType']):
                     print(scan, 'fat')
-                elif (('ADD') not in d.get('parameters/imageType',
-                                           '')):  # or ('OUT_PHASE' in d['parameters/imageType']) (('WATER' or 'FAT') not in d.get('parameters/imageType',''))
+                elif 'ADD' not in d.get('parameters/imageType',
+                                           ''):  # or ('OUT_PHASE' in d['parameters/imageType']) (('WATER' or 'FAT') not in d.get('parameters/imageType',''))
                     print(scan, 'out')
 
             if 'DIFFUSION' in d.get('parameters/imageType', ''):
@@ -28,3 +28,6 @@ def get_scans(MR_session):
                     print(scan, 'ADC')
                 elif 'COMPOSED' in d.get('parameters/imageType', ''):
                     print(scan, 'diff')
+
+# Big issue with this approach is that the dictionary .data (ie d) does not always have the right fields in it
+# for example some are missing imageType or scanOption. Instead I am going to use .dicom_dump() and process with pandas
