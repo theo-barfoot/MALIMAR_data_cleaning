@@ -1,4 +1,4 @@
-def get_scans(MR_session):
+def get_scans_d(MR_session):
     scans = MR_session.scans
     for scan in scans.values():
         d = scan.data
@@ -13,8 +13,7 @@ def get_scans(MR_session):
                     print(scan, 'water')
                 elif d.get('parameters/scanOptions', '') == 'DIXF':  # or ('FAT' in d['parameters/imageType']):
                     print(scan, 'fat')
-                elif 'ADD' not in d.get('parameters/imageType',
-                                           ''):  # or ('OUT_PHASE' in d['parameters/imageType']) (('WATER' or 'FAT') not in d.get('parameters/imageType',''))
+                elif ('ADD' or 'DIV') not in d.get('parameters/imageType', ''):  # or ('OUT_PHASE' in d['parameters/imageType']) (('WATER' or 'FAT') not in d.get('parameters/imageType',''))
                     print(scan, 'out')
 
             if 'DIFFUSION' in d.get('parameters/imageType', ''):
