@@ -38,5 +38,6 @@ no_cor = len(patients[patients['DIXON Orientation'] == 'cor']) + len(hvs[hvs['DI
 print(no_cor,'sessions with coronal DIXONS,','(',(no_cor/total_sessions)*100,'%'')',)
 
 # Aera scans - assumed
-
+no_aera = len(patients[patients['Scanner'] == 'Aera']) + len(hvs[hvs['Scanner'] == 'Aera'])
+print(no_aera,'Aera sessions,','(',(no_aera/total_sessions)*100,'%'')',)
 session.disconnect()
