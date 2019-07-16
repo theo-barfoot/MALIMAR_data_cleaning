@@ -1,6 +1,6 @@
 class MalimarSeries:
-    def __index__(self):
-        # self.__dictionary = {'in': [], 'out': [], 'fat': [], 'water': [], 'b50': [], 'b600': [], 'b900': [], 'ADC': [], 'diff': []}
+    def __init__(self):
+
         self.inPhase = []
         self.outPhase = []
         self.fat = []
@@ -11,35 +11,18 @@ class MalimarSeries:
         self.adc = []
         self.diff = []
 
-    def getInPhase(self):
-        return self.inPhase
-
-    def appendIn(self, inVal):
-        self.__dictionary['in'].append(inVal)
-
-    def getIn(self):
-        return self.__dictionary['in']
-
-
 
 def filter_series(mr_session):
     """
     :param mr_session:
-    :return series:
+    :return MalimarSeries:
 
-    takes in MRSessionData object and returns dictionary of series numbers for each series type required in
-    MALIMAR project.
+    takes in XNATpy MRSessionData object and returns XNATpy MRScanData Object.
     """
     tra = [1, 0, 0, 0, 1, 0]
     cor = [1, 0, 0, 0, 0, -1]
 
-    series = {'in': [], 'out': [], 'fat': [], 'water': [], 'b50': [], 'b600': [], 'b900': [], 'ADC': [], 'diff': []}
-
-    malimarSeries = MalimarSeries()
-
-    malimarSeries.appendIn('TEST')
-
-    malimarSeries.getIn()
+    malimar_series = MalimarSeries()
 
     scans = mr_session.scans
     for scan in scans.values():
@@ -48,31 +31,36 @@ def filter_series(mr_session):
             d = scan.data
             if (
                     (head.ImageOrientationPatient == cor and 'COMPOSED' in head.ImageType) or
-                    (head.ImageOrientationPatient == tra and d['frames'] > 100)
+                    (head.ImageOrientationPatient == tra and d['frames'] > 120)
             ):
                 if head.SequenceName[-5:] == 'fl3d2':
                     if (head.EchoTime > 3) or ('IN_PHASE' in head.ImageType):
-                        malimarSeries.inPhase.append(d['ID'])
+                        malimar_series.inPhase.append(scan)
                     elif head.ScanOptions == 'DIXW':
-                        series['water'].append(d['ID'])
+                        malimar_series.water.append(scan)
                     elif head.ScanOptions == 'DIXF':
-                        series['fat'].append(d['ID'])
+                        malimar_series.fat.append(scan)
                     elif ('ADD' or 'DIV') not in head.ImageType:
-                        series['out'].append(d['ID'])
+                        malimar_series.outPhase.append(scan)
 
                 if 'DIFFUSION' in head.ImageType:
-                    if head.SequenceName[-7:] == 'ep_b50t':
-                        series['b50'].append(d['ID'])
-                    elif head.SequenceName[-8:] == 'ep_b600t':
-                        series['b600'].append(d['ID'])
-                    elif head.SequenceName[-8:] == 'ep_b900t':
-                        series['b900'].append(d['ID'])
-                    elif head.SequenceName[-10:] == 'ep_b50_900':
-                        series['ADC'].append(d['ID'])
-                    elif 'COMPOSED' in head.ImageType:
-                        series['diff'].append(d['ID'])
+                    if d['frames'] < 400:
+                        if head.SequenceName[-7:] == 'ep_b50t':
+                            malimar_series.b50.append(scan)
+                        elif head.SequenceName[-8:] == 'ep_b600t':
+                            malimar_series.b600.append(scan)
+                        elif head.SequenceName[-8:] == 'ep_b900t':
+                            malimar_series.b900.append(scan)
+                        elif head.SequenceName[-10:] == 'ep_b50_900':
+                            malimar_series.adc.append(scan)
+                    elif 'COMP_DIF' in head.ImageType:
+                        malimar_series.diff.append(scan)
         except Exception as e:
-            print(e)
+            print(e, 'oh')
 
-    return series
+    return malimar_series
+
+def download_series():
+    return 0
+
 
