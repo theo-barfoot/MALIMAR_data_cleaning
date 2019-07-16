@@ -1,13 +1,21 @@
 import xnat
+import os
+import shutil
 
-from data_io import filter_series
+from data_io import filter_series, download_series
 
 with xnat.connect(server='https://bifrost.icr.ac.uk:8443/XNAT_anonymised/',
-                  user='tbarfoot', password='H3u#p5T3') as session:
-    project = session.projects["MALIMAR_ALL"]
-    mrSession = project.experiments['20181205_080450_Aera']
-    malimarSeries = filter_series(mrSession)
+                  user='tbarfoot') as session:
 
+    shutil.rmtree('temp',ignore_errors=True)
+    os.mkdir('temp')
+
+    project = session.projects["MALIMAR_ALL"]
+    mrSession = project.experiments['20171204_125025_Avanto']
+    malimarSeries = filter_series(mrSession)
+    malimarSeries = download_series(malimarSeries)
+
+    # shutil.rmtree('temp')
 
 # dicts = []
 #
