@@ -2,20 +2,26 @@ import xnat
 import os
 import shutil
 
-from data_io import filter_series, download_series
+from data_io import MalimarSeries
 
 with xnat.connect(server='https://bifrost.icr.ac.uk:8443/XNAT_anonymised/',
-                  user='tbarfoot') as session:
-
-    shutil.rmtree('temp',ignore_errors=True)
+                  user='tbarfoot', password='H3u#p5T3') as session:
+    # TODO: Find way to include spreadsheet
+    shutil.rmtree('temp', ignore_errors=True)
     os.mkdir('temp')
 
     project = session.projects["MALIMAR_ALL"]
     mrSession = project.experiments['20171204_125025_Avanto']
-    malimarSeries = filter_series(mrSession)
-    malimarSeries = download_series(malimarSeries)
+    malimarSeries = MalimarSeries(mrSession)
+    malimarSeries = MalimarSeries.get_series(malimarSeries)
 
-    # shutil.rmtree('temp')
+    # #filtered_series = malimarSeries.get_filtered_series()
+    # series = malimarSeries.downloadSeries()
+    #
+    # malimarSeries = filter_series(mrSession)
+    # malimarSeries = download_series(malimarSeries)
+    # print(malimarSeries.comlete())
+    # # shutil.rmtree('temp')
 
 # dicts = []
 #
