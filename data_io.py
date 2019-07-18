@@ -1,4 +1,6 @@
 import os
+import pandas as pd
+import pydicom
 
 
 class MalimarSeries:
@@ -6,18 +8,26 @@ class MalimarSeries:
 
         self.mr_session = mr_session
 
-        self.xnat = {'inPhase': [], 'outPhase': [], 'fat': [], 'water': [],
-                     'b50': [], 'b600': [], 'b900': [], 'adc': [], 'diff': []}
+        self.xnat_paths = {'inPhase': [], 'outPhase': [], 'fat': [], 'water': [],
+                           'b50': [], 'b600': [], 'b900': [], 'adc': [], 'diff': []}
 
-        self.local = {'inPhase': [], 'outPhase': [], 'fat': [], 'water': [],
-                      'b50': [], 'b600': [], 'b900': [], 'adc': [], 'diff': []}
+        self.local_paths = {'inPhase': [], 'outPhase': [], 'fat': [], 'water': [],
+                            'b50': [], 'b600': [], 'b900': [], 'adc': [], 'diff': []}
+
+        self.local_dcms = {'inPhase': [], 'outPhase': [], 'fat': [], 'water': [],
+                            'b50': [], 'b600': [], 'b900': [], 'adc': [], 'diff': []}
+
+        self.complete = False
+        self.duplicates = False
 
     def __check_complete(self):
         comp = (1, 1, 1, 1, 1, 0, 1, 1, 0)
+        # TODO: Better not to inspect diff, just unpack into b-vals and check for those
         a = []
-        for key, c in zip(self.xnat, comp):
-            a.append(len(self.xnat[key]) - c)
-        return min(a) > -1
+        for key, c in zip(self.xnat_paths, comp):
+            a.append(len(self.xnat_paths[key]) - c)
+        self.complete = min(a) > -1
+        self.duplicates = max(a) > 0
 
     def __filter_xnat_session(self):
         """
@@ -41,47 +51,67 @@ class MalimarSeries:
                 ):
                     if head.SequenceName[-5:] == 'fl3d2':
                         if (head.EchoTime > 3) or ('IN_PHASE' in head.ImageType):
-                            self.xnat['inPhase'].append(scan)
+                            self.xnat_paths['inPhase'].append(scan)
                         elif head.ScanOptions == 'DIXW':
-                            self.xnat['water'].append(scan)
+                            self.xnat_paths['water'].append(scan)
                         elif head.ScanOptions == 'DIXF':
-                            self.xnat['fat'].append(scan)
+                            self.xnat_paths['fat'].append(scan)
                         elif ('ADD' or 'DIV') not in head.ImageType:
-                            self.xnat['outPhase'].append(scan)
+                            self.xnat_paths['outPhase'].append(scan)
 
                     if 'DIFFUSION' in head.ImageType:
                         if d['frames'] < 400:
                             if head.SequenceName[-7:] == 'ep_b50t':
-                                self.xnat['b50'].append(scan)
+                                self.xnat_paths['b50'].append(scan)
                             elif head.SequenceName[-8:] == 'ep_b600t':
-                                self.xnat['b600'].append(scan)
+                                self.xnat_paths['b600'].append(scan)
                             elif head.SequenceName[-8:] == 'ep_b900t':
-                                self.xnat['b900'].append(scan)
+                                self.xnat_paths['b900'].append(scan)
                             elif head.SequenceName[-10:] == 'ep_b50_900':
-                                self.xnat['adc'].append(scan)
+                                self.xnat_paths['adc'].append(scan)
                         elif 'COMP_DIF' in head.ImageType:
-                            self.xnat['diff'].append(scan)
+                            self.xnat_paths['diff'].append(scan)
             except Exception as e:
                 print(e, 'oh')
 
-        return self
+        return self.xnat_paths
 
     def __download_filtered_series(self):
-        for key in self.xnat:
-            for i, item in enumerate(self.xnat[key]):
+        for key in self.xnat_paths:
+            for i, item in enumerate(self.xnat_paths[key]):
                 path = os.path.join('temp', key+'('+str(i+1)+')')
                 item.download_dir(path)
-                self.local[key].append(path)
-
-        return self
+                self.local_paths[key].append(path)
+                # TODO: create function for unpacking diff series and put path into MalimarSeries.local_paths dictonary
 
     def get_series(self):
         self.__filter_xnat_session()
-        if self.__check_complete():
+        self.__check_complete()
+        if self.complete:
             self.__download_filtered_series()
             return self
         else:
             return 0
 
+    def build_dcm_data_frames(self):
+        fields = ['InstanceNumber', 'SliceLocation', 'Rows', 'Columns', 'SequenceName', 'SeriesNumber']
+        for key in self.local_paths:
+            for path in self.local_paths[key]:
+                rows = []
+                for dirName, subdirList, fileList in os.walk(path):
+                    for filename in fileList:
+                        if ".dcm" in filename.lower():
+                            dict1 = {'FilePath': filename}
+                            dcm = pydicom.dcmread(os.path.join(dirName, filename), stop_before_pixels=True)
+                            for field in fields:
+                                dict1.update({field: getattr(dcm, field)})
+                            rows.append(dict1)
+                self.local_dcms[key].append(pd.DataFrame(rows,columns=fields))
+        return self
 
-# TODO: create function for unpacking diff series and put path into MalimarSeries.local dictonary
+
+def correct_slice_order(malimarSeries):
+    # malimarSeries.local_paths
+    for key in malimarSeries.local:
+        for path in malimarSeries.local[key]:
+            dcm_files = get_dcm_filenames(path)
