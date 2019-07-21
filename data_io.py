@@ -1,6 +1,4 @@
 import os
-import pandas as pd
-import pydicom
 
 
 class MalimarSeries:
@@ -14,20 +12,8 @@ class MalimarSeries:
         self.local_paths = {'inPhase': [], 'outPhase': [], 'fat': [], 'water': [],
                             'b50': [], 'b600': [], 'b900': [], 'adc': [], 'diff': []}
 
-        self.local_dcms = {'inPhase': [], 'outPhase': [], 'fat': [], 'water': [],
-                            'b50': [], 'b600': [], 'b900': [], 'adc': [], 'diff': []}
-
         self.complete = False
         self.duplicates = False
-
-    def __check_complete(self):
-        comp = (1, 1, 1, 1, 1, 0, 1, 1, 0)
-        # TODO: Better not to inspect diff, just unpack into b-vals and check for those
-        a = []
-        for key, c in zip(self.xnat_paths, comp):
-            a.append(len(self.xnat_paths[key]) - c)
-        self.complete = min(a) > -1
-        self.duplicates = max(a) > 0
 
     def __filter_xnat_session(self):
         """
@@ -74,7 +60,14 @@ class MalimarSeries:
             except Exception as e:
                 print(e, 'oh')
 
-        return self.xnat_paths
+    def __check_complete(self):
+        comp = (1, 1, 1, 1, 1, 0, 1, 1, 0)
+        # TODO: Better not to inspect diff, just unpack into b-vals and check for those
+        a = []
+        for key, c in zip(self.xnat_paths, comp):
+            a.append(len(self.xnat_paths[key]) - c)
+        self.complete = min(a) > -1
+        self.duplicates = max(a) > 0
 
     def __download_filtered_series(self):
         for key in self.xnat_paths:
@@ -84,34 +77,13 @@ class MalimarSeries:
                 self.local_paths[key].append(path)
                 # TODO: create function for unpacking diff series and put path into MalimarSeries.local_paths dictonary
 
-    def get_series(self):
+    def download(self):
         self.__filter_xnat_session()
         self.__check_complete()
         if self.complete:
             self.__download_filtered_series()
-            return self
-        else:
-            return 0
-
-    def build_dcm_data_frames(self):
-        fields = ['InstanceNumber', 'SliceLocation', 'Rows', 'Columns', 'SequenceName', 'SeriesNumber']
-        for key in self.local_paths:
-            for path in self.local_paths[key]:
-                rows = []
-                for dirName, subdirList, fileList in os.walk(path):
-                    for filename in fileList:
-                        if ".dcm" in filename.lower():
-                            dict1 = {'FilePath': filename}
-                            dcm = pydicom.dcmread(os.path.join(dirName, filename), stop_before_pixels=True)
-                            for field in fields:
-                                dict1.update({field: getattr(dcm, field)})
-                            rows.append(dict1)
-                self.local_dcms[key].append(pd.DataFrame(rows,columns=fields))
-        return self
+            return self.local_paths
 
 
-def correct_slice_order(malimarSeries):
-    # malimarSeries.local_paths
-    for key in malimarSeries.local:
-        for path in malimarSeries.local[key]:
-            dcm_files = get_dcm_filenames(path)
+
+
