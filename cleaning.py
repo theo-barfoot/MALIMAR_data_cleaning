@@ -20,6 +20,7 @@ def build_dcm_data_frames(paths):
                         rows.append(dict1)
             local_dcms[g].append(pd.DataFrame(rows, columns=fields))
     print('Dataframes of DICOM headers constructed')
+    return local_dcms
 
 # class SliceMatchedVolumes:
 #     def __init__(self, local_paths):
