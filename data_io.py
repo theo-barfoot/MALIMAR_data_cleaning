@@ -7,11 +7,11 @@ class MalimarSeries:
 
         self.mr_session = mr_session
 
-        self.xnat_paths = {'dixon': {'inPhase': [], 'outPhase': [], 'fat': [], 'water': []},
-                           'diffusion': {'b50': [], 'b600': [], 'b900': [], 'adc': [], 'bvals': []}}
+        self.xnat_paths_dict = {'dixon': {'inPhase': [], 'outPhase': [], 'fat': [], 'water': []},
+                                'diffusion': {'b50': [], 'b600': [], 'b900': [], 'adc': [], 'bvals': []}}
 
-        self.local_paths = {'dixon': {'inPhase': [], 'outPhase': [], 'fat': [], 'water': []},
-                            'diffusion': {'b50': [], 'b600': [], 'b900': [], 'adc': [], 'bvals': []}}
+        self.local_paths_dict = {'dixon': {'inPhase': [], 'outPhase': [], 'fat': [], 'water': []},
+                                 'diffusion': {'b50': [], 'b600': [], 'b900': [], 'adc': [], 'bvals': []}}
 
         self.complete = False
         self.duplicates = False
@@ -23,7 +23,7 @@ class MalimarSeries:
 
         takes in XNATpy MRSessionData object and returns XNATpy MRScanData Object.
         """
-
+        print('Identifying required series for MALIMAR')
         tra = [1, 0, 0, 0, 1, 0]
         cor = [1, 0, 0, 0, 0, -1]
 
@@ -38,34 +38,34 @@ class MalimarSeries:
                 ):
                     if head.SequenceName[-5:] == 'fl3d2':
                         if (head.EchoTime > 3) or ('IN_PHASE' in head.ImageType):
-                            self.xnat_paths['dixon']['inPhase'].append(scan)
+                            self.xnat_paths_dict['dixon']['inPhase'].append(scan)
                             print('DIXON - in phase:', scan)
                         elif head.ScanOptions == 'DIXW':
-                            self.xnat_paths['dixon']['water'].append(scan)
+                            self.xnat_paths_dict['dixon']['water'].append(scan)
                             print('DIXON - water:', scan)
                         elif head.ScanOptions == 'DIXF':
-                            self.xnat_paths['dixon']['fat'].append(scan)
+                            self.xnat_paths_dict['dixon']['fat'].append(scan)
                             print('DIXON - fat:', scan)
                         elif ('ADD' or 'DIV') not in head.ImageType:
-                            self.xnat_paths['dixon']['outPhase'].append(scan)
+                            self.xnat_paths_dict['dixon']['outPhase'].append(scan)
                             print('DIXON - out of phase:', scan)
 
                     if 'DIFFUSION' in head.ImageType:
                         if d['frames'] < 400:
                             if head.SequenceName[-7:] == 'ep_b50t':
-                                self.xnat_paths['diffusion']['b50'].append(scan)
+                                self.xnat_paths_dict['diffusion']['b50'].append(scan)
                                 print('Diffusion - b50:', scan)
                             elif head.SequenceName[-8:] == 'ep_b600t':
-                                self.xnat_paths['diffusion']['b600'].append(scan)
+                                self.xnat_paths_dict['diffusion']['b600'].append(scan)
                                 print('Diffusion - b600:', scan)
                             elif head.SequenceName[-8:] == 'ep_b900t':
-                                self.xnat_paths['diffusion']['b900'].append(scan)
+                                self.xnat_paths_dict['diffusion']['b900'].append(scan)
                                 print('Diffusion - b900:', scan)
                             elif head.SequenceName[-10:] == 'ep_b50_900':
-                                self.xnat_paths['diffusion']['adc'].append(scan)
+                                self.xnat_paths_dict['diffusion']['adc'].append(scan)
                                 print('Diffusion - ADC:', scan)
                         elif 'COMP_DIF' in head.ImageType:
-                            self.xnat_paths['diffusion']['bvals'].append(scan)
+                            self.xnat_paths_dict['diffusion']['bvals'].append(scan)
                             print('Diffusion - b values:', scan)
             except Exception as e:
                 print(e, 'oh')
@@ -75,9 +75,9 @@ class MalimarSeries:
         # TODO: Better not to inspect bvals, just unpack into b-vals and check for those
         # TODO: Need to change this so it checks dix and dif separately
         a = []
-        for group, comp in zip(self.xnat_paths, complete):
-            for key, c in zip(self.xnat_paths[group], comp):
-                a.append(len(self.xnat_paths[group][key]) - c)
+        for group, comp in zip(self.xnat_paths_dict, complete):
+            for key, c in zip(self.xnat_paths_dict[group], comp):
+                a.append(len(self.xnat_paths_dict[group][key]) - c)
         self.complete = min(a) > -1
         if self.complete:
             print('All required series found!')
@@ -89,14 +89,14 @@ class MalimarSeries:
             print('WARNING: Multiple series of same type found!')
 
     def __download_filtered_series(self):
-        for group in self.xnat_paths:
-            for key in self.xnat_paths[group]:
-                for i, item in enumerate(self.xnat_paths[group][key]):
+        for group in self.xnat_paths_dict:
+            for key in self.xnat_paths_dict[group]:
+                for i, item in enumerate(self.xnat_paths_dict[group][key]):
                     path = os.path.join('temp', key+'('+str(i+1)+')')
                     print('Downloading: ', key)
                     item.download_dir(path)
-                    self.local_paths[group][key].append(path)
-                # TODO: create function for unpacking bvals series and put path into MalimarSeries.local_paths dictonary
+                    self.local_paths_dict[group][key].append(path)
+                # TODO: create function for unpacking bvals series and put path into MalimarSeries.local_paths_dict dictonary
                 # TODO: change variable palceholders, eg key item to more useful names
 
     def download(self):
@@ -104,9 +104,15 @@ class MalimarSeries:
         self.__check_complete()
         if self.complete:
             self.__download_filtered_series()
-        return self.local_paths
+        return self.local_paths_dict
 
     def clean(self):
-        cleaning.build_dcm_data_frames(self.local_paths)
+        local_paths_list = []
+        for g, group in enumerate(self.local_paths_dict):
+            local_paths_list.append([])
+            for series in self.local_paths_dict[group]:
+                for item in self.local_paths_dict[group][series]:
+                    local_paths_list[g].append(item)
+        return cleaning.SliceMatchedVolumes(local_paths_list).generate()
 
 
