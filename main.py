@@ -23,6 +23,15 @@ with xnat.connect(server='http://localhost', user='admin',
     print('MR Session: ', mrSession.label)
 
     malimarSeries = MalimarSeries(mrSession)
-    malimarSeries.download()
-    output = malimarSeries.clean()
+    if malimarSeries.complete:
+        malimarSeries.download_series()
+        output = malimarSeries.clean()
 
+    # TODO: If 'ERROR: Unable to locate all required series' then don't continue to download
+    # TODO: Nifti conversion and uploading
+    # TODO: DICOM upload
+    # TODO: Unpack Aera b-values into seperate series
+    # TODO: Could have cleaning pass back lists for self.num_slice_order_corrected and then data_io concerts into
+    # messaged that relate to the series which are corrupted ... or maybe just have the dict passed in the first place?
+
+    # TODO: Ask jack how to add files to supervised git list..

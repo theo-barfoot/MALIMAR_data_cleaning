@@ -16,6 +16,9 @@ class MalimarSeries:
         self.complete = False
         self.duplicates = False
 
+        self.__filter_xnat_session()
+        self.__check_complete()
+
     def __filter_xnat_session(self):
         """
         :param self:
@@ -71,9 +74,8 @@ class MalimarSeries:
                 print(e, 'oh')
 
     def __check_complete(self):
-        complete = ((1, 1, 1, 1), (1, 0, 1, 1, 0))
-        # TODO: Better not to inspect bvals, just unpack into b-vals and check for those
-        # TODO: Need to change this so it checks dix and dif separately
+        complete = ((1, 1, 1, 1), (1, 0, 1, 1, 0))  # Avanto complete
+        # TODO: Be useful to print which series are missing
         a = []
         for group, comp in zip(self.xnat_paths_dict, complete):
             for key, c in zip(self.xnat_paths_dict[group], comp):
@@ -87,8 +89,9 @@ class MalimarSeries:
         self.duplicates = max(a) > 0
         if self.duplicates:
             print('WARNING: Multiple series of same type found!')
+        return self
 
-    def __download_filtered_series(self):
+    def download_series(self):
         for group in self.xnat_paths_dict:
             for key in self.xnat_paths_dict[group]:
                 for i, item in enumerate(self.xnat_paths_dict[group][key]):
@@ -98,13 +101,6 @@ class MalimarSeries:
                     self.local_paths_dict[group][key].append(path)
                 # TODO: create function for unpacking bvals series and put path into MalimarSeries.local_paths_dict dictonary
                 # TODO: change variable palceholders, eg key item to more useful names
-
-    def download(self):
-        self.__filter_xnat_session()
-        self.__check_complete()
-        if self.complete:
-            self.__download_filtered_series()
-        return self.local_paths_dict
 
     def clean(self):
         local_paths_list = []
