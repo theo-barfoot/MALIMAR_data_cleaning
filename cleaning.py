@@ -4,10 +4,10 @@ import pydicom
 
 
 class SliceMatchedVolumes:
-    def __init__(self, local_paths_list):
+    def __init__(self, local_paths_dict):
 
-        self.paths = local_paths_list
-        self.dcm_header_df_list = []
+        self.paths = local_paths_dict
+        self.dcm_header_df = pd.DataFrame()
         self.build_dcm_data_frames()
 
         self.num_slice_order_corrected = 0
@@ -15,23 +15,26 @@ class SliceMatchedVolumes:
 
     def build_dcm_data_frames(self):
         fields = ['InstanceNumber', 'SliceLocation', 'SliceThickness', 'Rows', 'Columns', 'PixelSpacing']
-        for g, group in enumerate(self.paths):
-            self.dcm_header_df_list.append([])
-            for path in group:
-                rows = []
-                for dirName, subdirList, fileList in os.walk(path):
-                    for filename in fileList:
-                        if ".dcm" in filename.lower():
-                            dict1 = {}
-                            dcm_path = os.path.join(dirName, filename)
-                            dcm = pydicom.dcmread(dcm_path, stop_before_pixels=True)
-                            for field in fields:
-                                dict1.update({field: getattr(dcm, field)})
-                            dict1.update({'path': dcm_path})
-                            rows.append(dict1)
-                self.dcm_header_df_list[g].append(pd.DataFrame(rows).sort_values(by=['SliceLocation']))
+        for sequence in self.paths:
+            for series in self.paths[sequence]:
+                for path in self.paths[sequence][series]:
+                    rows = []
+                    for dirName, subdirList, fileList in os.walk(path):
+                        for filename in fileList:
+                            if ".dcm" in filename.lower():
+                                dict1 = {'Sequence': sequence, 'Series': series}
+                                dcm_path = os.path.join(dirName, filename)
+                                dcm = pydicom.dcmread(dcm_path, stop_before_pixels=True)
+                                for field in fields:
+                                    dict1.update({field: getattr(dcm, field)})
+                                dict1.update({'path': dcm_path})
+                                rows.append(dict1)
+                df = pd.DataFrame(rows, columns=dict1.keys())
+                df.sort_values(by=['SliceLocation'], inplace=True)
+                self.dcm_header_df = self.dcm_header_df.append(df)
 
         print('List of Dataframes of DICOM headers constructed')
+        # todo: make InstanceNumber index? Can I still check for monotonic and reset if neccessary
 
     def correct_slice_order(self):
         for group in self.dcm_header_df_list:
@@ -41,10 +44,11 @@ class SliceMatchedVolumes:
                     df['InstanceNumber'] = df.index + 1
                     [self.rewrite_instance_number(x, y) for x, y in zip(df['InstanceNumber'], df['path'])]
                     self.num_slice_order_corrected += 1
+                    # todo: this needs changing to deal with new df structure
 
     def generate(self):
-        self.correct_inplane_resolution()
-        self.correct_slice_order()
+        #self.correct_inplane_resolution()
+        #self.correct_slice_order()
         return self
 
     @staticmethod
@@ -82,7 +86,8 @@ class SliceMatchedVolumes:
     def match_slice_locations(self):
         # for noew (getting avanto data moving) just check that all slice locations
         # and slice thicknesses are the same for all series across both groups
-
+        # Also check that the slices are contiguous
+        pass
         # Maybe start off by checking the length of each dataframe is the same
 
 
@@ -92,27 +97,4 @@ class SliceMatchedVolumes:
 
 
 
-# class SliceMatchedVolumes:
-#     def __init__(self, local_paths_dict):
-#         self.local_paths_dict = local_paths_dict
-#
-#         self.local_dcms = {}
-#
-#     def build_dcm_data_frames(self):
-#         fields = ['InstanceNumber', 'SliceLocation', 'Rows', 'Columns', 'SequenceName', 'SeriesNumber']
-#
-#         for group in self.local_paths_dict:
-#             for key in self.local_paths_dict[group]:
-#                 for path in self.local_paths_dict[group][key]:
-#                     rows = []
-#                     for dirName, subdirList, fileList in os.walk(path):
-#                         for filename in fileList:
-#                             if ".dcm" in filename.lower():
-#                                 dict1 = {'FilePath': filename}
-#                                 dcm = pydicom.dcmread(os.path.join(dirName, filename), stop_before_pixels=True)
-#                                 for field in fields:
-#                                     dict1.update({field: getattr(dcm, field)})
-#                                 rows.append(dict1)
-#                     self.local_dcms[key].append(pd.DataFrame(rows, columns=fields))
-#
-#     # TODO: Add constructor function for producing dataframe
+

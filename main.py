@@ -12,7 +12,7 @@ with xnat.connect(server='http://localhost', user='admin',
                   password='admin') as session:
     # TODO: Find way to include spreadsheet
 
-    print('Successfully connected to: ',session._original_uri,' as user: ',session._logged_in_user)
+    print('Successfully connected to: ', session._original_uri,' as user: ', session._logged_in_user)
     shutil.rmtree('temp', ignore_errors=True)
     os.mkdir('temp')
 
@@ -27,7 +27,6 @@ with xnat.connect(server='http://localhost', user='admin',
         malimarSeries.download_series()
         output = malimarSeries.clean()
 
-    # TODO: If 'ERROR: Unable to locate all required series' then don't continue to download
     # TODO: Nifti conversion and uploading
     # TODO: DICOM upload
     # TODO: Unpack Aera b-values into seperate series
@@ -35,3 +34,4 @@ with xnat.connect(server='http://localhost', user='admin',
     # messaged that relate to the series which are corrupted ... or maybe just have the dict passed in the first place?
 
     # TODO: Ask jack how to add files to supervised git list..
+    # TODO: Change input to cleaning back to dictionary and then build one large dataframe
