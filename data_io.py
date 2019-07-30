@@ -95,7 +95,9 @@ class MalimarSeries:
         for group in self.xnat_paths_dict:
             for key in self.xnat_paths_dict[group]:
                 for i, item in enumerate(self.xnat_paths_dict[group][key]):
-                    path = os.path.join('temp', key+'('+str(i+1)+')')
+                    path = os.path.join('temp', key)
+                    if i:
+                        path = path+'_'+str(i+1)
                     print('Downloading: ', key)
                     item.download_dir(path)
                     self.local_paths_dict[group][key].append(path)

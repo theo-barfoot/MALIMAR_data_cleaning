@@ -17,39 +17,40 @@ class SliceMatchedVolumes:
         fields = ['InstanceNumber', 'SliceLocation', 'SliceThickness', 'Rows', 'Columns', 'PixelSpacing']
         for sequence in self.paths:
             for series in self.paths[sequence]:
-                for path in self.paths[sequence][series]:
+                for i, path in enumerate(self.paths[sequence][series]):
                     rows = []
                     for dirName, subdirList, fileList in os.walk(path):
                         for filename in fileList:
                             if ".dcm" in filename.lower():
                                 dict1 = {'Sequence': sequence, 'Series': series}
+                                if i:
+                                    dict1['Series'] = dict1['Series']+'_'+str(i+1)
                                 dcm_path = os.path.join(dirName, filename)
                                 dcm = pydicom.dcmread(dcm_path, stop_before_pixels=True)
                                 for field in fields:
                                     dict1.update({field: getattr(dcm, field)})
-                                dict1.update({'path': dcm_path})
+                                dict1.update({'Path': dcm_path})
                                 rows.append(dict1)
-                df = pd.DataFrame(rows, columns=dict1.keys())
-                df.sort_values(by=['SliceLocation'], inplace=True)
-                self.dcm_header_df = self.dcm_header_df.append(df)
 
+                    df = pd.DataFrame(rows, columns=dict1.keys())
+                    df.sort_values(by=['SliceLocation'], inplace=True)
+                    self.dcm_header_df = self.dcm_header_df.append(df)
+
+        self.dcm_header_df.set_index(['Sequence','Series'], inplace=True)
         print('List of Dataframes of DICOM headers constructed')
-        # todo: make InstanceNumber index? Can I still check for monotonic and reset if neccessary
 
     def correct_slice_order(self):
-        for group in self.dcm_header_df_list:
-            for df in group:
-                if not df['InstanceNumber'].is_monotonic:
-                    df.reset_index(drop=True, inplace=True)
-                    df['InstanceNumber'] = df.index + 1
-                    [self.rewrite_instance_number(x, y) for x, y in zip(df['InstanceNumber'], df['path'])]
-                    self.num_slice_order_corrected += 1
-                    # todo: this needs changing to deal with new df structure
+        print('Checking DICOM slice order')
+        for idx, df_select in self.dcm_header_df.groupby(level=[0, 1]):  # level = [0,1] == ['Sequence','Series']
+            if not df_select['InstanceNumber'].is_monotonic:
+                print('Correcting', idx, 'slice order and rewriting DICOM header')
+                self.dcm_header_df.loc[idx, 'InstanceNumber'] = range(1, len(df_select)+1)
+                [self.rewrite_instance_number(x, y) for x, y in zip(self.dcm_header_df.loc[idx]['InstanceNumber'],
+                                                                    self.dcm_header_df.loc[idx]['Path'])]
+                self.num_slice_order_corrected += 1
 
-    def generate(self):
-        #self.correct_inplane_resolution()
-        #self.correct_slice_order()
-        return self
+    # This could of been written in many ways. Could of iterated through the dictionary, but groupby is more elegant
+    # Could of changed the df_select values and used them as inputs for the rewrite_instance_number function
 
     @staticmethod
     def rewrite_instance_number(instance_number, path):
@@ -89,6 +90,11 @@ class SliceMatchedVolumes:
         # Also check that the slices are contiguous
         pass
         # Maybe start off by checking the length of each dataframe is the same
+
+    def generate(self):
+        #self.correct_inplane_resolution()
+        self.correct_slice_order()
+        return self
 
 
 
