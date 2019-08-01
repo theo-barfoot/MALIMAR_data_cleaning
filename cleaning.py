@@ -12,6 +12,8 @@ class SliceMatchedVolumes:
 
         self.num_slice_order_corrected = 0
         self.num_inplane_dim_mismatch = 0
+        self.slice_matched = False
+        self.is_clean = False
 
     def build_dcm_data_frames(self):
         fields = ['InstanceNumber', 'SliceLocation', 'SliceThickness', 'Rows', 'Columns', 'PixelSpacing']
@@ -61,23 +63,14 @@ class SliceMatchedVolumes:
 # Things to check: in plane resolution, slice issues, fields of view,
     def correct_inplane_resolution(self):
         print('Checking in-plane resolution')
-        rows = []
-        cols = []
-        for g, group in enumerate(self.dcm_header_df_list):
-            rows.append([])
-            cols.append([])
-            for df in group:
-                if df['Columns'].nunique() == 1 and df['Rows'].nunique() == 1:  # Check dimensions of same series are constant ( this should always be the case)
-                    rows[g].append(df['Columns'].iloc[0])
-                    cols[g].append(df['Rows'].iloc[0])
-                else:
-                    print('In-plane resolution differs inside volume!!')
-            if not (rows[g].count(rows[g][0]) == len(rows[g])) and (cols[g].count(cols[g][0]) == len(cols[g])):   # Check rows and cols are same for series in same group
-                # TODO: resample in plane resolution to mode resoltuion
+
+        for idx, df_select in self.dcm_header_df.groupby('Sequence'):
+            if not df_select['Columns'].nunique() == 1 and df_select['Rows'].nunique() == 1:
+                print(idx, 'in-plane resolution MISMATCH')
                 self.num_inplane_dim_mismatch += 1
-                print('Uh oh in-plane res mismatch!')
+                # TODO: resample in plane resolution to mode resoltuion
             else:
-                print('in-plane resolution match')
+                print(idx, 'in-plane resolution MATCH')
 
     def correct_fov(self):
         # Check that all slice locations of the same group are the same
@@ -85,17 +78,32 @@ class SliceMatchedVolumes:
         pass
 
     def match_slice_locations(self):
-        # for noew (getting avanto data moving) just check that all slice locations
-        # and slice thicknesses are the same for all series across both groups
-        # Also check that the slices are contiguous
-        pass
-        # Maybe start off by checking the length of each dataframe is the same
+        a = self.dcm_header_df.groupby(level=[0, 1])['SliceLocation']
+        # Check all series have the same number of slices:
+        if a.count().nunique() == 1:
+            # Check for duplicate slices in each series:
+            if all(a.count() == a.nunique()):  # or a.count().equals(a.nunique())
+                # Check all slice locations are the same between series:
+                match = []
+                for i in range(len(a.unique()) - 1):
+                    match.append((a.unique()[i + 1].round(2) == a.unique()[i].round(2)).all())
+                if sum(match) == len(match):
+                    print('All slice (location and number) are matched between series')
+                    self.slice_matched = True
+
+        # a.first()
+        # a.last()  -- will check for first and last slice
 
     def generate(self):
-        #self.correct_inplane_resolution()
         self.correct_slice_order()
-        return self
+        self.correct_inplane_resolution()
+        self.match_slice_locations()
+        if self.num_inplane_dim_mismatch == 0 and self.slice_matched:
+            self.is_clean = True
+        return self.is_clean
 
+# todo: probably going to be best to write this so that it checks if the volume is clean and if not then you call
+# the cleaning function, rather than having the two together
 
 
 

@@ -25,7 +25,11 @@ with xnat.connect(server='http://localhost', user='admin',
     malimarSeries = MalimarSeries(mrSession)
     if malimarSeries.complete:
         malimarSeries.download_series()
-        output = malimarSeries.clean()
+        malimarSeries.clean()
+        if malimarSeries.is_clean:
+            print('yeee')
+            malimarSeries.upload_nifti()
+
 
     # TODO: Nifti conversion and uploading
     # TODO: DICOM upload
@@ -35,3 +39,6 @@ with xnat.connect(server='http://localhost', user='admin',
 
     # TODO: Ask jack how to add files to supervised git list..
     # TODO: Change input to cleaning back to dictionary and then build one large dataframe
+
+    # change series descriptions for all series before upload as dicom
+    # change series uid, (series number?) and sop instance uid - when any data (including istance number) has been changed

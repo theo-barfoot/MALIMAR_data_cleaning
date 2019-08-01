@@ -15,6 +15,7 @@ class MalimarSeries:
 
         self.complete = False
         self.duplicates = False
+        self.is_clean = False
 
         self.__filter_xnat_session()
         self.__check_complete()
@@ -105,12 +106,13 @@ class MalimarSeries:
                 # TODO: change variable palceholders, eg key item to more useful names
 
     def clean(self):
-        # local_paths_list = []
-        # for g, group in enumerate(self.local_paths_dict):
-        #     local_paths_list.append([])
-        #     for series in self.local_paths_dict[group]:
-        #         for item in self.local_paths_dict[group][series]:
-        #             local_paths_list[g].append(item)
-        return cleaning.SliceMatchedVolumes(self.local_paths_dict).generate()
+        self.is_clean = cleaning.SliceMatchedVolumes(self.local_paths_dict).generate()
+        return self.is_clean
+
+    def upload_nifti(self):
+        pass
+
+    def upload_dicom(self):
+        pass
 
 
