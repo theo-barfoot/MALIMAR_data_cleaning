@@ -13,3 +13,12 @@ for g, group in enumerate(paths_dict):
 output = build_dcm_data_frames(paths_list)
 
 
+def upload_nifti():
+    os.mkdir('temp/nifti')
+    dicom2nifti.convert_directory('temp/', 'temp/nifti', compression=True, reorient=True)
+    [os.rename('temp/nifti/' + f, 'temp/nifti/' + f[3:]) for f in os.listdir('temp/nifti/') if not f.startswith('.')]
+
+    # in theory could use this, but it assumes that there will be XX_ on the file name
+    # chopping off the front just seems silly
+
+

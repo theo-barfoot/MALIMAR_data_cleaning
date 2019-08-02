@@ -30,15 +30,12 @@ with xnat.connect(server='http://localhost', user='admin',
             print('yeee')
             malimarSeries.upload_nifti()
 
-
-    # TODO: Nifti conversion and uploading
+    # TODO: Series UID
     # TODO: DICOM upload
-    # TODO: Unpack Aera b-values into seperate series
-    # TODO: Could have cleaning pass back lists for self.num_slice_order_corrected and then data_io concerts into
-    # messaged that relate to the series which are corrupted ... or maybe just have the dict passed in the first place?
-
-    # TODO: Ask jack how to add files to supervised git list..
-    # TODO: Change input to cleaning back to dictionary and then build one large dataframe
-
-    # change series descriptions for all series before upload as dicom
-    # change series uid, (series number?) and sop instance uid - when any data (including istance number) has been changed
+    # TODO: NIFTI upload
+    # TODO: Fix multiple series of same type detection
+    # TODO: Implement Spreadsheet
+    # TODO: Unpack Aera b-values
+    # TODO: inplane resolution correction
+    # TODO: Slice resampling
+    # TODO: figure out coronal data.....

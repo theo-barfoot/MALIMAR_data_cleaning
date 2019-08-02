@@ -1,5 +1,7 @@
 import os
 import cleaning
+import dicom2nifti
+#  import SimpleITK as sitk
 
 
 class MalimarSeries:
@@ -102,15 +104,21 @@ class MalimarSeries:
                     print('Downloading: ', key)
                     item.download_dir(path)
                     self.local_paths_dict[group][key].append(path)
-                # TODO: create function for unpacking bvals series and put path into MalimarSeries.local_paths_dict dictonary
-                # TODO: change variable palceholders, eg key item to more useful names
 
     def clean(self):
         self.is_clean = cleaning.SliceMatchedVolumes(self.local_paths_dict).generate()
         return self.is_clean
 
     def upload_nifti(self):
-        pass
+        os.mkdir('temp/nifti')
+        for sequence in self.local_paths_dict:
+            for series in self.local_paths_dict[sequence]:
+                print('Converting', sequence, '-', series, 'to', series, '.nii.gz')
+                for i, path in enumerate(self.local_paths_dict[sequence][series]):
+                    filename = series
+                    if i:
+                        filename+'_'+str(i+1)
+                    dicom2nifti.convert_dicom.dicom_series_to_nifti(path, 'temp/nifti/'+filename+'.nii.gz')
 
     def upload_dicom(self):
         pass

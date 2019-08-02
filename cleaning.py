@@ -49,6 +49,7 @@ class SliceMatchedVolumes:
                 self.dcm_header_df.loc[idx, 'InstanceNumber'] = range(1, len(df_select)+1)
                 [self.rewrite_instance_number(x, y) for x, y in zip(self.dcm_header_df.loc[idx]['InstanceNumber'],
                                                                     self.dcm_header_df.loc[idx]['Path'])]
+                                                                  # self.dcm_header_df.loc[idx] == df_select
                 self.num_slice_order_corrected += 1
 
     # This could of been written in many ways. Could of iterated through the dictionary, but groupby is more elegant
@@ -58,6 +59,14 @@ class SliceMatchedVolumes:
     def rewrite_instance_number(instance_number, path):
         ds = pydicom.dcmread(path)
         ds.InstanceNumber = instance_number
+        ds.SOPInstanceUID = pydicom.uid.generate_uid()
+        # todo: ds.SeriesInstanceUID =
+        ds.save_as(path)
+
+    @staticmethod
+    def rewrite_series_description(index, path):
+        ds = pydicom.dcmread(path)
+        ds.SeriesDescription = index[1]
         ds.save_as(path)
 
 # Things to check: in plane resolution, slice issues, fields of view,
@@ -95,6 +104,7 @@ class SliceMatchedVolumes:
         # a.last()  -- will check for first and last slice
 
     def generate(self):
+        [self.rewrite_series_description(x, y) for x, y in zip(self.dcm_header_df.index, self.dcm_header_df['Path'])]
         self.correct_slice_order()
         self.correct_inplane_resolution()
         self.match_slice_locations()
@@ -102,8 +112,11 @@ class SliceMatchedVolumes:
             self.is_clean = True
         return self.is_clean
 
-# todo: probably going to be best to write this so that it checks if the volume is clean and if not then you call
+# probably going to be best to write this so that it checks if the volume is clean and if not then you call
 # the cleaning function, rather than having the two together
+# probably best to create rewrite dicom header function that just takes the columns as argments for the header elements
+# and then writes the value in that row for the header element
+# may be better to not have it as multi index, but need to figure out how this works with: self.dcm_header_df.loc[idx, 'InstanceNumber'] = range(1, len(df_select)+1)
 
 
 
