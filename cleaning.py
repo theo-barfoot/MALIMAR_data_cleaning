@@ -44,12 +44,12 @@ class SliceMatchedVolumes:
     def correct_slice_order(self):
         print('Checking DICOM slice order')
         for idx, df_select in self.dcm_header_df.groupby(level=[0, 1]):  # level = [0,1] == ['Sequence','Series']
+            # could try not creating df_select and just using idx to perform checks
             if not df_select['InstanceNumber'].is_monotonic:
                 print('Correcting', idx, 'slice order and rewriting DICOM header')
                 self.dcm_header_df.loc[idx, 'InstanceNumber'] = range(1, len(df_select)+1)
                 [self.rewrite_instance_number(x, y) for x, y in zip(self.dcm_header_df.loc[idx]['InstanceNumber'],
                                                                     self.dcm_header_df.loc[idx]['Path'])]
-                                                                  # self.dcm_header_df.loc[idx] == df_select
                 self.num_slice_order_corrected += 1
 
     # This could of been written in many ways. Could of iterated through the dictionary, but groupby is more elegant
@@ -60,7 +60,9 @@ class SliceMatchedVolumes:
         ds = pydicom.dcmread(path)
         ds.InstanceNumber = instance_number
         ds.SOPInstanceUID = pydicom.uid.generate_uid()
-        # todo: ds.SeriesInstanceUID =
+        # todo: ds.SeriesInstanceUID = do this by changing series uid when instance = 1
+        # probably best to achieve this by sending df_select and then looping through elements of that
+        # send df_select then check load ds, then check if anything has changed?
         ds.save_as(path)
 
     @staticmethod
