@@ -8,17 +8,17 @@ from data_io import MalimarSeries
 # Local: http://localhost admin admin - MALIMAR_local
 # ICR: https://xnatcruk.icr.ac.uk/XNAT_ICR_COLLABORATIONS tbarfoot - MALIMAR_PHASE1
 
-with xnat.connect(server='http://localhost', user='admin',
-                  password='admin') as session:
+with xnat.connect(server='https://bifrost.icr.ac.uk:8443/XNAT_anonymised/', user='tbarfoot',
+                  password='H3u#p5T3') as session:
     # TODO: Find way to include spreadsheet
 
     print('Successfully connected to: ', session._original_uri,' as user: ', session._logged_in_user)
     shutil.rmtree('temp', ignore_errors=True)
     os.mkdir('temp')
 
-    project = session.projects["MALIMAR_local"]
+    project = session.projects["MALIMAR_ALL"]
     print('Project: ', project.name)
-    mrSession = project.experiments['20181215_152525_Avanto']
+    mrSession = project.experiments['20171204_125025_Avanto']
     print('-------------------------------------------------')
     print('MR Session: ', mrSession.label)
 
@@ -30,7 +30,6 @@ with xnat.connect(server='http://localhost', user='admin',
             print('yeee')
             malimarSeries.upload_nifti()
 
-    # TODO: Series UID
     # TODO: DICOM upload
     # TODO: NIFTI upload
     # TODO: Fix multiple series of same type detection

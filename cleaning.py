@@ -44,26 +44,23 @@ class SliceMatchedVolumes:
     def correct_slice_order(self):
         print('Checking DICOM slice order')
         for idx, df_select in self.dcm_header_df.groupby(level=[0, 1]):  # level = [0,1] == ['Sequence','Series']
-            # could try not creating df_select and just using idx to perform checks
             if not df_select['InstanceNumber'].is_monotonic:
                 print('Correcting', idx, 'slice order and rewriting DICOM header')
                 self.dcm_header_df.loc[idx, 'InstanceNumber'] = range(1, len(df_select)+1)
-                [self.rewrite_instance_number(x, y) for x, y in zip(self.dcm_header_df.loc[idx]['InstanceNumber'],
-                                                                    self.dcm_header_df.loc[idx]['Path'])]
+                self.rewrite_instance_number(idx)
                 self.num_slice_order_corrected += 1
 
     # This could of been written in many ways. Could of iterated through the dictionary, but groupby is more elegant
     # Could of changed the df_select values and used them as inputs for the rewrite_instance_number function
 
-    @staticmethod
-    def rewrite_instance_number(instance_number, path):
-        ds = pydicom.dcmread(path)
-        ds.InstanceNumber = instance_number
-        ds.SOPInstanceUID = pydicom.uid.generate_uid()
-        # todo: ds.SeriesInstanceUID = do this by changing series uid when instance = 1
-        # probably best to achieve this by sending df_select and then looping through elements of that
-        # send df_select then check load ds, then check if anything has changed?
-        ds.save_as(path)
+    def rewrite_instance_number(self, idx):
+        series_uid = pydicom.uid.generate_uid()
+        for i, p in zip(self.dcm_header_df.loc[idx]['InstanceNumber'], self.dcm_header_df.loc[idx]['Path']):
+            ds = pydicom.dcmread(p)
+            ds.InstanceNumber = i
+            ds.SeriesInstanceUID = series_uid
+            ds.SOPInstanceUID = pydicom.uid.generate_uid()
+            ds.save_as(p)
 
     @staticmethod
     def rewrite_series_description(index, path):
@@ -112,6 +109,7 @@ class SliceMatchedVolumes:
         self.match_slice_locations()
         if self.num_inplane_dim_mismatch == 0 and self.slice_matched:
             self.is_clean = True
+        self.dcm_header_df.to_excel('df.xlsx')
         return self.is_clean
 
 # probably going to be best to write this so that it checks if the volume is clean and if not then you call

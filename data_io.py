@@ -74,7 +74,7 @@ class MalimarSeries:
                             self.xnat_paths_dict['diffusion']['bvals'].append(scan)
                             print('Diffusion - b values:', scan)
             except Exception as e:
-                print(e, 'oh')
+                print(e)
 
     def __check_complete(self):
         complete = ((1, 1, 1, 1), (1, 0, 1, 1, 0))  # Avanto complete
@@ -113,12 +113,20 @@ class MalimarSeries:
         os.mkdir('temp/nifti')
         for sequence in self.local_paths_dict:
             for series in self.local_paths_dict[sequence]:
-                print('Converting', sequence, '-', series, 'to', series, '.nii.gz')
                 for i, path in enumerate(self.local_paths_dict[sequence][series]):
+                    dicom2nifti.settings.enable_validate_slice_increment()
                     filename = series
                     if i:
-                        filename+'_'+str(i+1)
-                    dicom2nifti.convert_dicom.dicom_series_to_nifti(path, 'temp/nifti/'+filename+'.nii.gz')
+                        filename = filename+'_'+str(i+1)
+                    print('Converting', sequence, '-', filename, 'to', filename + '.nii.gz')
+                    try:
+                        dicom2nifti.convert_dicom.dicom_series_to_nifti(path, 'temp/nifti/'+filename+'.nii.gz')
+                    except Exception as e:
+                        print(e)
+                        #  dicom2nifti.settings.disable_validate_slice_increment()
+                        #  dicom2nifti.convert_dicom.dicom_series_to_nifti(path, 'temp/nifti/'+filename+'.nii.gz')
+
+
 
     def upload_dicom(self):
         pass
