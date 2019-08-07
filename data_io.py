@@ -1,13 +1,16 @@
 import os
 import cleaning
 import dicom2nifti
+import shutil
+
 #  import SimpleITK as sitk
 
 
 class MalimarSeries:
     def __init__(self, mr_session):
 
-        self.mr_session = mr_session
+        self.mr_session_down = mr_session
+        self.mr_session_up = None
 
         self.xnat_paths_dict = {'dixon': {'inPhase': [], 'outPhase': [], 'fat': [], 'water': []},
                                 'diffusion': {'b50': [], 'b600': [], 'b900': [], 'adc': [], 'bvals': []}}
@@ -21,6 +24,8 @@ class MalimarSeries:
 
         self.__filter_xnat_session()
         self.__check_complete()
+        shutil.rmtree('temp', ignore_errors=True)
+        os.mkdir('temp')
 
     def __filter_xnat_session(self):
         """
@@ -33,7 +38,7 @@ class MalimarSeries:
         tra = [1, 0, 0, 0, 1, 0]
         cor = [1, 0, 0, 0, 0, -1]
 
-        scans = self.mr_session.scans
+        scans = self.mr_session_down.scans
         for scan in scans.values():
             try:
                 head = scan.read_dicom()
@@ -95,10 +100,11 @@ class MalimarSeries:
         return self
 
     def download_series(self):
+        os.mkdir('temp/dicoms')
         for group in self.xnat_paths_dict:
             for key in self.xnat_paths_dict[group]:
                 for i, item in enumerate(self.xnat_paths_dict[group][key]):
-                    path = os.path.join('temp', key)
+                    path = os.path.join('temp/dicoms', key)
                     if i:
                         path = path+'_'+str(i+1)
                     print('Downloading: ', key)
@@ -109,7 +115,7 @@ class MalimarSeries:
         self.is_clean = cleaning.SliceMatchedVolumes(self.local_paths_dict).generate()
         return self.is_clean
 
-    def upload_nifti(self):
+    def generate_nifti(self):
         os.mkdir('temp/nifti')
         for sequence in self.local_paths_dict:
             for series in self.local_paths_dict[sequence]:
@@ -126,9 +132,25 @@ class MalimarSeries:
                         #  dicom2nifti.settings.disable_validate_slice_increment()
                         #  dicom2nifti.convert_dicom.dicom_series_to_nifti(path, 'temp/nifti/'+filename+'.nii.gz')
 
-
-
-    def upload_dicom(self):
+    def upload_nifti(self):
+        resp = session.upload(self.mr_session_up.uri, 'temp/nifti/adc.nii.gz')
         pass
+
+    def upload_dicom(self, session_up, project):
+        print('Zipping DICOMs')
+        shutil.make_archive('temp/dicoms', 'zip', 'temp/dicoms')
+        print('Uploading DICOMs to ...')
+        pre = session_up.services.import_('temp/dicoms.zip', project=project, destination='/prearchive')
+        print('Archiving MrSessionData')
+        self.mr_session_up = pre.archive()
+        print(self.mr_session_up.label, 'successfully archived')
+
+    def upload_series(self, session_up, project):
+        self.upload_dicom(session_up, project)
+        self.generate_nifti()
+        self.upload_nifti()
+        # while archiving do the nifti conversion?
+
+
 
 
