@@ -133,7 +133,12 @@ class MalimarSeries:
                         #  dicom2nifti.convert_dicom.dicom_series_to_nifti(path, 'temp/nifti/'+filename+'.nii.gz')
 
     def upload_nifti(self):
-        resp = session.upload(self.mr_session_up.uri, 'temp/nifti/adc.nii.gz')
+        # session.create_object(uri=post.uri+'resources/NIFTI?format=NIFTI')
+        # need to create the folder first...
+        # resp = session.upload(self.mr_session_up.uri, 'temp/nifti/adc.nii.gz')
+        #         # session.create_assessor()
+        #         # session.create_object()
+        #         # session.classes.ExperimentData()
         pass
 
     def upload_dicom(self, session_up, project):

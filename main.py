@@ -38,3 +38,6 @@ with xnat.connect(server='https://bifrost.icr.ac.uk:8443/XNAT_anonymised/', user
         # TODO: inplane resolution correction
         # TODO: Slice resampling
         # TODO: figure out coronal data.....
+
+#  'MrSessionData',
+#  'MrsScanData',
