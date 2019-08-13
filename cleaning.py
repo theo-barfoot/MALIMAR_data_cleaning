@@ -17,6 +17,7 @@ class SliceMatchedVolumes:
 
     def build_dcm_data_frames(self):
         fields = ['InstanceNumber', 'SliceLocation', 'SliceThickness', 'Rows', 'Columns', 'PixelSpacing']
+        sn = 1  # New series number
         for sequence in self.paths:
             for series in self.paths[sequence]:
                 for i, path in enumerate(self.paths[sequence][series]):
@@ -24,7 +25,7 @@ class SliceMatchedVolumes:
                     for dirName, subdirList, fileList in os.walk(path):
                         for filename in fileList:
                             if ".dcm" in filename.lower():
-                                dict1 = {'Sequence': sequence, 'Series': series}
+                                dict1 = {'Sequence': sequence, 'Series': series, 'SeriesNumber': sn}
                                 if i:
                                     dict1['Series'] = dict1['Series']+'_'+str(i+1)
                                 dcm_path = os.path.join(dirName, filename)
@@ -34,11 +35,12 @@ class SliceMatchedVolumes:
                                 dict1.update({'Path': dcm_path})
                                 rows.append(dict1)
 
+                    sn += 1
                     df = pd.DataFrame(rows, columns=dict1.keys())
                     df.sort_values(by=['SliceLocation'], inplace=True)
                     self.dcm_header_df = self.dcm_header_df.append(df)
 
-        self.dcm_header_df.set_index(['Sequence','Series'], inplace=True)
+        self.dcm_header_df.set_index(['Sequence', 'Series'], inplace=True)
         print('List of Dataframes of DICOM headers constructed')
 
     def correct_slice_order(self):
@@ -63,9 +65,10 @@ class SliceMatchedVolumes:
             ds.save_as(p)
 
     @staticmethod
-    def rewrite_series_description(index, path):
+    def rewrite_series_info(index, sn, path):
         ds = pydicom.dcmread(path)
         ds.SeriesDescription = index[1]
+        ds.SeriesNumber = sn
         ds.save_as(path)
 
 # Things to check: in plane resolution, slice issues, fields of view,
@@ -103,7 +106,11 @@ class SliceMatchedVolumes:
         # a.last()  -- will check for first and last slice
 
     def generate(self):
-        [self.rewrite_series_description(x, y) for x, y in zip(self.dcm_header_df.index, self.dcm_header_df['Path'])]
+        [self.rewrite_series_info(x, y, z) for x, y, z in zip(self.dcm_header_df.index,
+                                                              self.dcm_header_df['SeriesNumber'],
+                                                              self.dcm_header_df['Path'])]
+        # may be best to rewrite every dcm header based on the information in the dataframe, limiting the number
+        # of dicom read and writes
         self.correct_slice_order()
         self.correct_inplane_resolution()
         self.match_slice_locations()

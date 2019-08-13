@@ -2,6 +2,9 @@ import os
 import cleaning
 import dicom2nifti
 import shutil
+import xml.etree.cElementTree as ET
+import datetime
+import uuid
 
 #  import SimpleITK as sitk
 
@@ -12,12 +15,13 @@ class MalimarSeries:
         self.mr_session_down = mr_session
         self.mr_session_up = None
 
-        self.xnat_paths_dict = {'dixon': {'inPhase': [], 'outPhase': [], 'fat': [], 'water': []},
+        self.xnat_paths_dict = {'dixon': {'in': [], 'out': [], 'fat': [], 'water': []},
                                 'diffusion': {'b50': [], 'b600': [], 'b900': [], 'adc': [], 'bvals': []}}
 
-        self.local_paths_dict = {'dixon': {'inPhase': [], 'outPhase': [], 'fat': [], 'water': []},
+        self.local_paths_dict = {'dixon': {'in': [], 'out': [], 'fat': [], 'water': []},
                                  'diffusion': {'b50': [], 'b600': [], 'b900': [], 'adc': [], 'bvals': []}}
 
+        self.complete = False
         self.complete = False
         self.duplicates = False
         self.is_clean = False
@@ -49,7 +53,7 @@ class MalimarSeries:
                 ):
                     if head.SequenceName[-5:] == 'fl3d2':
                         if (head.EchoTime > 3) or ('IN_PHASE' in head.ImageType):
-                            self.xnat_paths_dict['dixon']['inPhase'].append(scan)
+                            self.xnat_paths_dict['dixon']['in'].append(scan)
                             print('DIXON - in phase:', scan)
                         elif head.ScanOptions == 'DIXW':
                             self.xnat_paths_dict['dixon']['water'].append(scan)
@@ -58,7 +62,7 @@ class MalimarSeries:
                             self.xnat_paths_dict['dixon']['fat'].append(scan)
                             print('DIXON - fat:', scan)
                         elif ('ADD' or 'DIV') not in head.ImageType:
-                            self.xnat_paths_dict['dixon']['outPhase'].append(scan)
+                            self.xnat_paths_dict['dixon']['out'].append(scan)
                             print('DIXON - out of phase:', scan)
 
                     if 'DIFFUSION' in head.ImageType:
@@ -129,26 +133,60 @@ class MalimarSeries:
                         dicom2nifti.convert_dicom.dicom_series_to_nifti(path, 'temp/nifti/'+filename+'.nii.gz')
                     except Exception as e:
                         print(e)
+
                         #  dicom2nifti.settings.disable_validate_slice_increment()
                         #  dicom2nifti.convert_dicom.dicom_series_to_nifti(path, 'temp/nifti/'+filename+'.nii.gz')
 
     def upload_nifti(self):
-        # session.create_object(uri=post.uri+'resources/NIFTI?format=NIFTI')
-        # need to create the folder first...
-        # resp = session.upload(self.mr_session_up.uri, 'temp/nifti/adc.nii.gz')
-        #         # session.create_assessor()
-        #         # session.create_object()
-        #         # session.classes.ExperimentData()
-        pass
+        # TODO: need to think carefully about what are class/instance methods and what can be static
+        scans = self.mr_session_up.scans
+        for i, scan in scans.items():
+            a = scan.create_resource(label='NIFTI', format='NIFTI')
+            scan.resources['NIFTI'].upload('temp/nifti/' + scan.series_description + '.nii.gz', scan.series_description + '.nii.gz')
+        # TODO: Really need to clean these file paths
 
-    def upload_dicom(self, session_up, project):
+    def upload_dicom(self, connection_up, project):
         print('Zipping DICOMs')
         shutil.make_archive('temp/dicoms', 'zip', 'temp/dicoms')
-        print('Uploading DICOMs to ...')
-        pre = session_up.services.import_('temp/dicoms.zip', project=project, destination='/prearchive')
+        print('Uploading DICOMs to', connection_up._original_uri)
+        pre = connection_up.services.import_('temp/dicoms.zip', project=project, destination='/prearchive')
         print('Archiving MrSessionData')
         self.mr_session_up = pre.archive()
         print(self.mr_session_up.label, 'successfully archived')
+
+        scans = self.mr_session_up.scans
+        for i, scan in scans.items():
+            scan.type = scan.series_description.split('_')[0]
+
+    @staticmethod
+    def upload_seg(mr_session_up, path):
+
+        d = datetime.date.today().strftime('%Y-%m-%d')
+        t = datetime.datetime.now().time().strftime('%H:%M:%S')
+        dt = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+
+        filename = path.split('/')[-1]
+
+        root = ET.Element('RoiCollection')
+        root.set('xmlns:icr', 'http://www.icr.ac.uk/icr')
+        root.set('xmlns:prov', 'http://www.nbirn.net/prov')
+        root.set('xmlns:xnat', 'http://nrg.wustl.edu/xnat')
+        root.set('xmlns:xsi', 'http://www.w3.org/2001/XMLSchema-instance')
+
+        date = ET.SubElement(root, 'date').text = d
+        time = ET.SubElement(root, 'time').text = t
+        imageSession_ID = ET.SubElement(root, 'imageSession_ID').text = mr_session_up.label
+        uid = ET.SubElement(root, 'UID').text = str(uuid.uuid1())
+        col = ET.SubElement(root, 'collectionType').text='NIFTI'
+        sub = ET.SubElement(root, 'subjectID').text = mr_session_up.subject_id
+        ref = ET.SubElement(root, 'references')
+        ser = ET.SubElement(ref, 'seriesUID').text = mr_session_up.scans['in'].uid
+        nam = ET.SubElement(root, 'name').text = filename
+
+        tree = ET.ElementTree(root)
+        tree.write('filename2.xml', encoding='utf-8', xml_declaration=True)
+    pass
+
 
     def upload_series(self, session_up, project):
         self.upload_dicom(session_up, project)
@@ -156,6 +194,8 @@ class MalimarSeries:
         self.upload_nifti()
         # while archiving do the nifti conversion?
 
+    def myfunc(self):
+        pass
 
 
 
