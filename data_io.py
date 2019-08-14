@@ -5,6 +5,7 @@ import shutil
 import xml.etree.cElementTree as ET
 import datetime
 import uuid
+from io import BytesIO
 
 #  import SimpleITK as sitk
 
@@ -129,8 +130,7 @@ class MalimarSeries:
                     if i:
                         filename = filename+'_'+str(i+1)
                     print('Converting', sequence, '-', filename, 'to', filename + '.nii.gz')
-                    try:
-                        dicom2nifti.convert_dicom.dicom_series_to_nifti(path, 'temp/nifti/'+filename+'.nii.gz')
+                    try:                        dicom2nifti.convert_dicom.dicom_series_to_nifti(path, 'temp/nifti/'+filename+'.nii.gz')
                     except Exception as e:
                         print(e)
 
@@ -159,43 +159,63 @@ class MalimarSeries:
             scan.type = scan.series_description.split('_')[0]
 
     @staticmethod
-    def upload_seg(mr_session_up, path):
+    def upload_seg(mr_session_up, path, series):
 
         d = datetime.date.today().strftime('%Y-%m-%d')
         t = datetime.datetime.now().time().strftime('%H:%M:%S')
         dt = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
 
-        filename = path.split('/')[-1]
+        uid_ = str(uuid.uuid1())
+        label = 'NIFTI_' + dt
+        id_ = 'RoiCollection_' + uid_
+
+        filename = path.split('/')[-1].split('.')[0]
 
         root = ET.Element('RoiCollection')
         root.set('xmlns:icr', 'http://www.icr.ac.uk/icr')
         root.set('xmlns:prov', 'http://www.nbirn.net/prov')
         root.set('xmlns:xnat', 'http://nrg.wustl.edu/xnat')
         root.set('xmlns:xsi', 'http://www.w3.org/2001/XMLSchema-instance')
+        root.set('id', id_)
+        root.set('label', label)
+        root.set('project', mr_session_up.project)
+        root.set('version', '1')
 
-        date = ET.SubElement(root, 'date').text = d
-        time = ET.SubElement(root, 'time').text = t
-        imageSession_ID = ET.SubElement(root, 'imageSession_ID').text = mr_session_up.label
-        uid = ET.SubElement(root, 'UID').text = str(uuid.uuid1())
-        col = ET.SubElement(root, 'collectionType').text='NIFTI'
-        sub = ET.SubElement(root, 'subjectID').text = mr_session_up.subject_id
+        ET.SubElement(root, 'date').text = d
+        ET.SubElement(root, 'time').text = t
+        ET.SubElement(root, 'imageSession_ID').text = mr_session_up.label
+        ET.SubElement(root, 'UID').text = uid_
+        ET.SubElement(root, 'collectionType').text='NIFTI'
+        ET.SubElement(root, 'subjectID').text = mr_session_up.subject_id
         ref = ET.SubElement(root, 'references')
-        ser = ET.SubElement(ref, 'seriesUID').text = mr_session_up.scans['in'].uid
-        nam = ET.SubElement(root, 'name').text = filename
+        ET.SubElement(ref, 'seriesUID').text = mr_session_up.scans[series].uid
+        ET.SubElement(root, 'name').text = filename
 
         tree = ET.ElementTree(root)
-        tree.write('filename2.xml', encoding='utf-8', xml_declaration=True)
-    pass
+        f = BytesIO()
+        tree.write(f, encoding='utf-8', xml_declaration=True)
 
+        assessorUrl = mr_session_up.fulluri + '/assessors/' + id_
+        putResourceMetadataUrl = assessorUrl + '?inbody=true'
+        putCreateResourceUrl = assessorUrl + '/resources/NIFTI?content=EXTERNAL&format=NIFTI&description=NIFTI+instance+file&name=NIFTI'
+        putUploadNiftiUrl = '/resources/NIFTI/files/{}?inbody=true&content=EXTERNAL&format=NIFTI'.format(filename)
 
-    def upload_series(self, session_up, project):
-        self.upload_dicom(session_up, project)
+        file_handle = open(path, 'rb')
+
+        headers = {'Content-Type': 'text/xml'}
+        mr_session_up.xnat_session.put(path=putResourceMetadataUrl, data=f.getvalue(), headers=headers)
+        mr_session_up.xnat_session.put(path=putCreateResourceUrl)
+        headers = {'Content-Type': 'application/octet-stream'}
+        mr_session_up.xnat_session.put(path=putUploadNiftiUrl, data=file_handle, headers=headers)
+
+        file_handle.close()
+
+    def upload_series(self, connection_up, project):
+        self.upload_dicom(connection_up, project)
         self.generate_nifti()
         self.upload_nifti()
+        self.upload_seg(self.mr_session_up, 'temp/RMH_083_20170309_t1seg_theo.nii.gz', 'in')
         # while archiving do the nifti conversion?
-
-    def myfunc(self):
-        pass
 
 
 

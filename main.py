@@ -27,6 +27,7 @@ with xnat.connect(server='https://bifrost.icr.ac.uk:8443/XNAT_anonymised/', user
                 malimarSeries.upload_series(connection_up, 'MALIMAR_local')
 
         # TODO: Upload segmentation in correct place
+        # TODO: Implement correct login method
         # TODO: Improve console prints
         # TODO: Fix multiple series of same type detection
         # TODO: Implement Spreadsheet
