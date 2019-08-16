@@ -26,7 +26,7 @@ with xnat.connect(server='https://bifrost.icr.ac.uk:8443/XNAT_anonymised/', user
             if malimarSeries.is_clean:
                 malimarSeries.upload_series(connection_up, 'MALIMAR_local')
 
-        # TODO: Upload segmentation in correct place
+        # TODO: Get segmentation to be displayed properly - try create resource method
         # TODO: Implement correct login method
         # TODO: Improve console prints
         # TODO: Fix multiple series of same type detection
@@ -36,4 +36,3 @@ with xnat.connect(server='https://bifrost.icr.ac.uk:8443/XNAT_anonymised/', user
         # TODO: inplane resolution correction
         # TODO: Slice resampling
         # TODO: figure out coronal data.....
-

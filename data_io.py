@@ -12,7 +12,8 @@ from io import BytesIO
 
 class MalimarSeries:
     def __init__(self, mr_session):
-
+        # todo: add self.connection_up
+        # todo: add self.connection_down - pass connections as arguments and then just the mr_session_down as a string
         self.mr_session_down = mr_session
         self.mr_session_up = None
 
@@ -22,7 +23,6 @@ class MalimarSeries:
         self.local_paths_dict = {'dixon': {'in': [], 'out': [], 'fat': [], 'water': []},
                                  'diffusion': {'b50': [], 'b600': [], 'b900': [], 'adc': [], 'bvals': []}}
 
-        self.complete = False
         self.complete = False
         self.duplicates = False
         self.is_clean = False
@@ -156,7 +156,9 @@ class MalimarSeries:
 
         scans = self.mr_session_up.scans
         for i, scan in scans.items():
-            scan.type = scan.series_description.split('_')[0]
+            scan.type = scan.series_description.split('_')[0]  # this doesn't change mr_sessions_up object
+
+        self.mr_session_up = connection_up.experiments[self.mr_session_up.label]
 
     @staticmethod
     def upload_seg(mr_session_up, path, series):
@@ -165,11 +167,13 @@ class MalimarSeries:
         t = datetime.datetime.now().time().strftime('%H:%M:%S')
         dt = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
 
-        uid_ = str(uuid.uuid1())
+        uid_ = str(uuid.uuid1())  # could change to datetime.datetime.now().strftime('%Y%m%d_%H%M%S_%f')
         label = 'NIFTI_' + dt
-        id_ = 'RoiCollection_' + uid_
+        id_ = 'RoiCollection_' + dt  # could use uid, but a little unsightly
 
-        filename = path.split('/')[-1].split('.')[0]
+        filename_long = path.split('/')[-1]
+        filename = filename_long.split('.')[0]
+
 
         root = ET.Element('RoiCollection')
         root.set('xmlns:icr', 'http://www.icr.ac.uk/icr')
@@ -198,15 +202,22 @@ class MalimarSeries:
         assessorUrl = mr_session_up.fulluri + '/assessors/' + id_
         putResourceMetadataUrl = assessorUrl + '?inbody=true'
         putCreateResourceUrl = assessorUrl + '/resources/NIFTI?content=EXTERNAL&format=NIFTI&description=NIFTI+instance+file&name=NIFTI'
-        putUploadNiftiUrl = '/resources/NIFTI/files/{}?inbody=true&content=EXTERNAL&format=NIFTI'.format(filename)
+        #  putUploadNiftiUrl = '/resources/NIFTI/files/{}?inbody=true&content=EXTERNAL&format=NIFTI'.format(filename)
+        UploadNiftiUrl = filename_long+'?inbody=true&content=EXTERNAL&format=NIFTI'
 
         file_handle = open(path, 'rb')
 
         headers = {'Content-Type': 'text/xml'}
+
+        print(putResourceMetadataUrl)
         mr_session_up.xnat_session.put(path=putResourceMetadataUrl, data=f.getvalue(), headers=headers)
+        print(putCreateResourceUrl)
         mr_session_up.xnat_session.put(path=putCreateResourceUrl)
-        headers = {'Content-Type': 'application/octet-stream'}
-        mr_session_up.xnat_session.put(path=putUploadNiftiUrl, data=file_handle, headers=headers)
+        print(UploadNiftiUrl)
+        mr_session_up.assessors[id_].resources['NIFTI'].upload(path, UploadNiftiUrl)
+
+        # headers = {'Content-Type': 'application/octet-stream'} -- two lines encounter 403 (permission) error
+        # mr_session_up.xnat_session.put(path=putUploadNiftiUrl, data=file_handle, headers=headers)
 
         file_handle.close()
 
