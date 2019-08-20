@@ -137,31 +137,37 @@ class MalimarSeries:
                         #  dicom2nifti.settings.disable_validate_slice_increment()
                         #  dicom2nifti.convert_dicom.dicom_series_to_nifti(path, 'temp/nifti/'+filename+'.nii.gz')
 
-    def upload_nifti(self):
-        # TODO: need to think carefully about what are class/instance methods and what can be static
-        scans = self.mr_session_up.scans
+    @staticmethod
+    def upload_nifti(mr_session_up):
+        scans = mr_session_up.scans
         for i, scan in scans.items():
             a = scan.create_resource(label='NIFTI', format='NIFTI')
             scan.resources['NIFTI'].upload('temp/nifti/' + scan.series_description + '.nii.gz', scan.series_description + '.nii.gz')
         # TODO: Really need to clean these file paths
 
-    def upload_dicom(self, connection_up, project):
+    @staticmethod
+    def upload_dicom(path, connection_up, project):
         print('Zipping DICOMs')
-        shutil.make_archive('temp/dicoms', 'zip', 'temp/dicoms')
+        shutil.make_archive(path, 'zip', path)
         print('Uploading DICOMs to', connection_up._original_uri)
         pre = connection_up.services.import_('temp/dicoms.zip', project=project, destination='/prearchive')
         print('Archiving MrSessionData')
-        self.mr_session_up = pre.archive()
-        print(self.mr_session_up.label, 'successfully archived')
+        mr_session_up = pre.archive()
+        print(mr_session_up.label, 'successfully archived')
 
-        scans = self.mr_session_up.scans
+        scans = mr_session_up.scans
         for i, scan in scans.items():
             scan.type = scan.series_description.split('_')[0]  # this doesn't change mr_sessions_up object
 
-        self.mr_session_up = connection_up.experiments[self.mr_session_up.label]
+        return connection_up.experiments[mr_session_up.label]
 
     @staticmethod
     def upload_seg(mr_session_up, path, series):
+
+        # headers = {'Content-Type': 'application/octet-stream'}
+        # series_uid = mr_session_up.scans[series].read_dicom().SeriesInstanceUID
+        # uri = mr_session_up.fulluri + '/collections/NIFTI?type=NIFTI&overwrite=true&seriesuid=' + series_uid
+        # mr_session_up.xnat_session.put()
 
         d = datetime.date.today().strftime('%Y-%m-%d')
         t = datetime.datetime.now().time().strftime('%H:%M:%S')
@@ -192,7 +198,7 @@ class MalimarSeries:
         ET.SubElement(root, 'collectionType').text='NIFTI'
         ET.SubElement(root, 'subjectID').text = mr_session_up.subject_id
         ref = ET.SubElement(root, 'references')
-        ET.SubElement(ref, 'seriesUID').text = mr_session_up.scans[series].uid
+        ET.SubElement(ref, 'seriesUID').text = mr_session_up.scans[series].read_dicom().SeriesInstanceUID
         ET.SubElement(root, 'name').text = filename
 
         tree = ET.ElementTree(root)
@@ -221,12 +227,8 @@ class MalimarSeries:
 
         file_handle.close()
 
-    def upload_series(self, connection_up, project):
-        self.upload_dicom(connection_up, project)
-        self.generate_nifti()
-        self.upload_nifti()
-        self.upload_seg(self.mr_session_up, 'temp/RMH_083_20170309_t1seg_theo.nii.gz', 'in')
-        # while archiving do the nifti conversion?
-
-
-
+    @staticmethod
+    def upload_series(connection_up, project):
+        mr_session_up = MalimarSeries.upload_dicom('temp/dicoms', connection_up, project)
+        MalimarSeries.upload_nifti(mr_session_up)
+        MalimarSeries.upload_seg(mr_session_up, 'temp/RMH_083_20170309_t1seg_theo.nii.gz', 'in')
