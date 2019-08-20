@@ -6,6 +6,7 @@ import xml.etree.cElementTree as ET
 import datetime
 import uuid
 from io import BytesIO
+import requests
 
 #  import SimpleITK as sitk
 
@@ -164,71 +165,22 @@ class MalimarSeries:
     @staticmethod
     def upload_seg(mr_session_up, path, series):
 
-        # headers = {'Content-Type': 'application/octet-stream'}
-        # series_uid = mr_session_up.scans[series].read_dicom().SeriesInstanceUID
-        # uri = mr_session_up.fulluri + '/collections/NIFTI?type=NIFTI&overwrite=true&seriesuid=' + series_uid
-        # mr_session_up.xnat_session.put()
+        root_uri = mr_session_up.xnat_session._original_uri
+        project = mr_session_up.project
+        session_id = mr_session_up.id
+        series_uid = mr_session_up.scans[series].read_dicom().SeriesInstanceUID
+        label = 't1seg'  # needs changing - not sure exactly what it is best as
 
-        d = datetime.date.today().strftime('%Y-%m-%d')
-        t = datetime.datetime.now().time().strftime('%H:%M:%S')
-        dt = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-
-        uid_ = str(uuid.uuid1())  # could change to datetime.datetime.now().strftime('%Y%m%d_%H%M%S_%f')
-        label = 'NIFTI_' + dt
-        id_ = 'RoiCollection_' + dt  # could use uid, but a little unsightly
-
-        filename_long = path.split('/')[-1]
-        filename = filename_long.split('.')[0]
-
-
-        root = ET.Element('RoiCollection')
-        root.set('xmlns:icr', 'http://www.icr.ac.uk/icr')
-        root.set('xmlns:prov', 'http://www.nbirn.net/prov')
-        root.set('xmlns:xnat', 'http://nrg.wustl.edu/xnat')
-        root.set('xmlns:xsi', 'http://www.w3.org/2001/XMLSchema-instance')
-        root.set('id', id_)
-        root.set('label', label)
-        root.set('project', mr_session_up.project)
-        root.set('version', '1')
-
-        ET.SubElement(root, 'date').text = d
-        ET.SubElement(root, 'time').text = t
-        ET.SubElement(root, 'imageSession_ID').text = mr_session_up.label
-        ET.SubElement(root, 'UID').text = uid_
-        ET.SubElement(root, 'collectionType').text='NIFTI'
-        ET.SubElement(root, 'subjectID').text = mr_session_up.subject_id
-        ref = ET.SubElement(root, 'references')
-        ET.SubElement(ref, 'seriesUID').text = mr_session_up.scans[series].read_dicom().SeriesInstanceUID
-        ET.SubElement(root, 'name').text = filename
-
-        tree = ET.ElementTree(root)
-        f = BytesIO()
-        tree.write(f, encoding='utf-8', xml_declaration=True)
-
-        assessorUrl = mr_session_up.fulluri + '/assessors/' + id_
-        putResourceMetadataUrl = assessorUrl + '?inbody=true'
-        putCreateResourceUrl = assessorUrl + '/resources/NIFTI?content=EXTERNAL&format=NIFTI&description=NIFTI+instance+file&name=NIFTI'
-        #  putUploadNiftiUrl = '/resources/NIFTI/files/{}?inbody=true&content=EXTERNAL&format=NIFTI'.format(filename)
-        UploadNiftiUrl = filename_long+'?inbody=true&content=EXTERNAL&format=NIFTI'
-
+        uri = '{}/xapi/roi/projects/{}/sessions/{}/collections/{}?type=NIFTI&overwrite=true&seriesuid={}'.format(root_uri, project, session_id, label, series_uid)
+        headers = {'Content-Type': 'application/octet-stream', 'Accept': 'text/plain'}
         file_handle = open(path, 'rb')
 
-        headers = {'Content-Type': 'text/xml'}
-
-        print(putResourceMetadataUrl)
-        mr_session_up.xnat_session.put(path=putResourceMetadataUrl, data=f.getvalue(), headers=headers)
-        print(putCreateResourceUrl)
-        mr_session_up.xnat_session.put(path=putCreateResourceUrl)
-        print(UploadNiftiUrl)
-        mr_session_up.assessors[id_].resources['NIFTI'].upload(path, UploadNiftiUrl)
-
-        # headers = {'Content-Type': 'application/octet-stream'} -- two lines encounter 403 (permission) error
-        # mr_session_up.xnat_session.put(path=putUploadNiftiUrl, data=file_handle, headers=headers)
-
+        response = requests.put(url=uri, data=file_handle, headers=headers, auth=('admin', 'admin'))  # Auth can be netrc
+        print(response)
         file_handle.close()
 
     @staticmethod
     def upload_series(connection_up, project):
         mr_session_up = MalimarSeries.upload_dicom('temp/dicoms', connection_up, project)
         MalimarSeries.upload_nifti(mr_session_up)
-        MalimarSeries.upload_seg(mr_session_up, 'temp/RMH_083_20170309_t1seg_theo.nii.gz', 'in')
+        MalimarSeries.upload_seg(mr_session_up, 'RMH_083_20170309_t1seg_theo.nii.gz', 'in')

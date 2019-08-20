@@ -27,10 +27,7 @@ with xnat.connect(server='https://bifrost.icr.ac.uk:8443/XNAT_anonymised/', user
                 malimarSeries.generate_nifti()
                 malimarSeries.upload_series(connection_up, 'MALIMAR_local')
 
-        # TODO: Get segmentation to be displayed properly - try create resource method
-            # TODO: Rewrite uploads as static methods
-            # TODO: Use debugger - breakpoints
-
+        # TODO: Get segmentation to be displayed properly - might need to put on backburner
         # TODO: Implement correct login method
         # TODO: Improve console prints
         # TODO: Fix multiple series of same type detection
