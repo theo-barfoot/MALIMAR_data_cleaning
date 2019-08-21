@@ -56,7 +56,7 @@ class SliceMatchedVolumes:
     # Could of changed the df_select values and used them as inputs for the rewrite_instance_number function
 
     def rewrite_instance_number(self, idx):
-        series_uid = pydicom.uid.generate_uid()
+        series_uid = pydicom.uid.generate_uid()  # should use icr unique prefix
         for i, p in zip(self.dcm_header_df.loc[idx]['InstanceNumber'], self.dcm_header_df.loc[idx]['Path']):
             ds = pydicom.dcmread(p)
             ds.InstanceNumber = i

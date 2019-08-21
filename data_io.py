@@ -2,10 +2,10 @@ import os
 import cleaning
 import dicom2nifti
 import shutil
-import xml.etree.cElementTree as ET
-import datetime
-import uuid
-from io import BytesIO
+# import xml.etree.cElementTree as ET
+# import datetime
+# import uuid
+# from io import BytesIO
 import requests
 
 #  import SimpleITK as sitk
@@ -16,7 +16,6 @@ class MalimarSeries:
         # todo: add self.connection_up
         # todo: add self.connection_down - pass connections as arguments and then just the mr_session_down as a string
         self.mr_session_down = mr_session
-        self.mr_session_up = None
 
         self.xnat_paths_dict = {'dixon': {'in': [], 'out': [], 'fat': [], 'water': []},
                                 'diffusion': {'b50': [], 'b600': [], 'b900': [], 'adc': [], 'bvals': []}}
@@ -93,7 +92,8 @@ class MalimarSeries:
         a = []
         for group, comp in zip(self.xnat_paths_dict, complete):
             for key, c in zip(self.xnat_paths_dict[group], comp):
-                a.append(len(self.xnat_paths_dict[group][key]) - c)
+                if c:  # if the series is required
+                    a.append(len(self.xnat_paths_dict[group][key]) - c)
         self.complete = min(a) > -1
         if self.complete:
             print('All required series found!')
@@ -143,6 +143,7 @@ class MalimarSeries:
         scans = mr_session_up.scans
         for i, scan in scans.items():
             a = scan.create_resource(label='NIFTI', format='NIFTI')
+            print('Uploading', scan.series_description + '.nii.gz')
             scan.resources['NIFTI'].upload('temp/nifti/' + scan.series_description + '.nii.gz', scan.series_description + '.nii.gz')
         # TODO: Really need to clean these file paths
 
@@ -158,13 +159,13 @@ class MalimarSeries:
 
         scans = mr_session_up.scans
         for i, scan in scans.items():
+            print('Changing XNAT scan type', scan.type, 'to:', scan.series_description.split('_')[0])
             scan.type = scan.series_description.split('_')[0]  # this doesn't change mr_sessions_up object
-
         return connection_up.experiments[mr_session_up.label]
 
     @staticmethod
     def upload_seg(mr_session_up, path, series):
-
+        print('Uploading', path.split('/')[-1], 'to', series, 'scan')
         root_uri = mr_session_up.xnat_session._original_uri
         project = mr_session_up.project
         session_id = mr_session_up.id
@@ -172,7 +173,7 @@ class MalimarSeries:
         label = 't1seg'  # needs changing - not sure exactly what it is best as
 
         uri = '{}/xapi/roi/projects/{}/sessions/{}/collections/{}?type=NIFTI&overwrite=true&seriesuid={}'.format(root_uri, project, session_id, label, series_uid)
-        headers = {'Content-Type': 'application/octet-stream', 'Accept': 'text/plain'}
+        headers = {'Content-Type': 'application/octet-stream'}
         file_handle = open(path, 'rb')
 
         response = requests.put(url=uri, data=file_handle, headers=headers, auth=('admin', 'admin'))  # Auth can be netrc
