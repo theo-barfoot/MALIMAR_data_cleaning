@@ -1,6 +1,7 @@
 import os
 import pandas as pd
 import pydicom
+import ast
 
 
 class SliceMatchedVolumes:
@@ -15,8 +16,12 @@ class SliceMatchedVolumes:
         self.slice_matched = False
         self.is_clean = False
 
+        self.fields = ['InstanceNumber', 'SliceLocation', 'SliceThickness', 'Rows', 'Columns', 'PixelSpacing',
+                  'SeriesInstanceUID', 'SOPInstanceUID']
+
+        # self.uid_prefix = Not sure how to set it to '1.2.826.0.1.3680043.8.498.' as default or argument if passed
+
     def build_dcm_data_frames(self):
-        fields = ['InstanceNumber', 'SliceLocation', 'SliceThickness', 'Rows', 'Columns', 'PixelSpacing']
         sn = 1  # New series number
         for sequence in self.paths:
             for series in self.paths[sequence]:
@@ -30,7 +35,7 @@ class SliceMatchedVolumes:
                                     dict1['Series'] = dict1['Series']+'_'+str(i+1)
                                 dcm_path = os.path.join(dirName, filename)
                                 dcm = pydicom.dcmread(dcm_path, stop_before_pixels=True)
-                                for field in fields:
+                                for field in self.fields:
                                     dict1.update({field: getattr(dcm, field)})
                                 dict1.update({'Path': dcm_path})
                                 rows.append(dict1)
@@ -41,6 +46,7 @@ class SliceMatchedVolumes:
                     self.dcm_header_df = self.dcm_header_df.append(df)
 
         self.dcm_header_df.set_index(['Sequence', 'Series'], inplace=True)
+        self.dcm_header_df.sort_index()  # to prevent 'indexing past lexsort depth' warning
         print('List of Dataframes of DICOM headers constructed')
 
     def correct_slice_order(self):
@@ -56,20 +62,11 @@ class SliceMatchedVolumes:
     # Could of changed the df_select values and used them as inputs for the rewrite_instance_number function
 
     def rewrite_instance_number(self, idx):
-        series_uid = pydicom.uid.generate_uid()  # should use icr unique prefix
         for i, p in zip(self.dcm_header_df.loc[idx]['InstanceNumber'], self.dcm_header_df.loc[idx]['Path']):
             ds = pydicom.dcmread(p)
             ds.InstanceNumber = i
-            ds.SeriesInstanceUID = series_uid
-            ds.SOPInstanceUID = pydicom.uid.generate_uid()
-            ds.save_as(p)
+            ds.save_as(p) #######################
 
-    @staticmethod
-    def rewrite_series_info(index, sn, path):
-        ds = pydicom.dcmread(path)
-        ds.SeriesDescription = index[1]
-        ds.SeriesNumber = sn
-        ds.save_as(path)
 
 # Things to check: in plane resolution, slice issues, fields of view,
     def correct_inplane_resolution(self):
@@ -83,10 +80,6 @@ class SliceMatchedVolumes:
             else:
                 print(idx, 'in-plane resolution MATCH')
 
-    def correct_fov(self):
-        # Check that all slice locations of the same group are the same
-        # Actully fov and slice issues are the same thing, just do it in slice
-        pass
 
     def match_slice_locations(self):
         a = self.dcm_header_df.groupby(level=[0, 1])['SliceLocation']
@@ -105,15 +98,46 @@ class SliceMatchedVolumes:
         # a.first()
         # a.last()  -- will check for first and last slice
 
+    def rewrite_series_info(self):
+        # Rewrite series number, series description, series UID, instance UID
+        prefix = '1.2.826.0.1.3680043.8.498.'
+        for idx in self.dcm_header_df.index:  # group by series effectively
+            series_uid = pydicom.uid.generate_uid(prefix=prefix)
+
+        series_uid = pydicom.uid.generate_uid()  # should use icr unique prefix
+        ds.SeriesInstanceUID = series_uid
+        ds.SOPInstanceUID = pydicom.uid.generate_uid(prefix='1.2.826.0.1.534147.')  # ICR prefix - need to add as class argument
+        pass
+
+    def edit_dicom(self):
+        for row in self.dcm_header_df.itertuples():
+            ds = pydicom.dcmread(row.Path)
+            ds.SeriesDescription = row.Index[1]
+            for field in self.fields:
+                try:
+                    setattr(ds, field, getattr(row, field))
+                except ValueError:
+                    setattr(ds, field, ast.literal_eval(getattr(row, field)))
+                    # Pixelspacing is stored in df as "['0.83984375', '0.83984375']"
+                    # ast.literal_eval changes this back to ['0.83984375', '0.83984375']
+
+    @staticmethod
+    def rewrite_series_info_REMOVE(index, sn, path):
+        ds = pydicom.dcmread(path)
+        ds.SeriesDescription = index[1]
+        ds.SeriesNumber = sn
+        ds.save_as(path)
+
     def generate(self):
-        [self.rewrite_series_info(x, y, z) for x, y, z in zip(self.dcm_header_df.index,
-                                                              self.dcm_header_df['SeriesNumber'],
-                                                              self.dcm_header_df['Path'])]
-        # may be best to rewrite every dcm header based on the information in the dataframe, limiting the number
-        # of dicom read and writes
+        # [self.rewrite_series_info(x, y, z) for x, y, z in zip(self.dcm_header_df.index,
+        #                                                       self.dcm_header_df['SeriesNumber'],
+        #                                                       self.dcm_header_df['Path'])]
         self.correct_slice_order()
         self.correct_inplane_resolution()
         self.match_slice_locations()
+        self.rewrite_series_info()
+        # self.rewrite seris info - including uids?
+        # self.rewrite_uids
         if self.num_inplane_dim_mismatch == 0 and self.slice_matched:
             self.is_clean = True
         self.dcm_header_df.to_excel('df.xlsx')

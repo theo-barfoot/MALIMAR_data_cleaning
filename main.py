@@ -25,6 +25,7 @@ with xnat.connect(server=anon) as connection_down:
                 malimarSeries.upload_series(connection_up, 'MALIMAR_local')
 
         # TODO: change instance and series uid for all series, as even a change in series number/description counts
+        # TODO: Make series number same for each type of series - ie in = 1, adc = 8
         # TODO: ICR uid prefix
         # TODO: Get segmentation to be displayed properly..
         # TODO: Improve console prints
