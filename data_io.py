@@ -18,8 +18,8 @@ class MalimarSeries:
         self.xnat_paths_dict = {'dixon': {'in': [], 'out': [], 'fat': [], 'water': []},
                                 'diffusion': {'b50': [], 'b600': [], 'b900': [], 'adc': [], 'bvals': []}}
 
-        self.local_paths_dict = {'dixon': {'in': '', 'out': '', 'fat': '', 'water': ''},
-                                 'diffusion': {'b50': '', 'b600': '', 'b900': '', 'adc': '', 'bvals': ''}}
+        self.local_paths_dict = {'dixon': {'in': None, 'out': None, 'fat': None, 'water': None},
+                                 'diffusion': {'b50': None, 'b600': None, 'b900': None, 'adc': None, 'bvals': None}}
 
         self.complete = False
         self.duplicates = False
@@ -127,7 +127,7 @@ class MalimarSeries:
             series_descriptions.append([])
             series_numbers.append([])
             for series in self.local_paths_dict[sequence]:
-                if len(self.local_paths_dict[sequence][series]):
+                if self.local_paths_dict[sequence][series]:
                     local_paths_list[seq_no].append(self.local_paths_dict[sequence][series])
                     series_descriptions[seq_no].append(series)
                     series_numbers[seq_no].append(ser_no)
@@ -140,7 +140,7 @@ class MalimarSeries:
         os.mkdir('temp/nifti')
         for sequence in self.local_paths_dict:
             for series in self.local_paths_dict[sequence]:
-                if len(self.local_paths_dict[sequence][series]):
+                if self.local_paths_dict[sequence][series]:
                     path = self.local_paths_dict[sequence][series]
                     dicom2nifti.settings.enable_validate_slice_increment()
                     filename = series
