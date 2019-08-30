@@ -7,7 +7,7 @@ colab = 'https://xnatcruk.icr.ac.uk/XNAT_ICR_COLLABORATIONS'
 
 with xnat.connect(server=anon) as connection_down:
     with xnat.connect(server=local) as connection_up:
-        # TODO: Find way to include spreadsheet
+
         print('Successfully connected to: ', connection_down._original_uri,
               ' as user: ', connection_down._logged_in_user)
 
@@ -24,9 +24,8 @@ with xnat.connect(server=anon) as connection_down:
                 malimarSeries.generate_nifti()
                 malimarSeries.upload_series(connection_up, 'MALIMAR_local')
 
-        # TODO: change instance and series uid for all series, as even a change in series number/description counts
-        # TODO: Make series number same for each type of series - ie in = 1, adc = 8
-        # TODO: ICR uid prefix
+        # TODO: In cleaning change 'Sequence' to 'Group' -- OR remove group descriptions and just index based on dummy group name
+
         # TODO: Get segmentation to be displayed properly..
         # TODO: Improve console prints
         # TODO: Implement Spreadsheet
@@ -35,3 +34,4 @@ with xnat.connect(server=anon) as connection_down:
         # TODO: inplane resolution correction
         # TODO: Slice resampling
         # TODO: figure out coronal data.....
+        # TODO: allow series/group descriptions + series number to be left empty and write init function to make default ones

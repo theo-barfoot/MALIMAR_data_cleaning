@@ -13,15 +13,13 @@ import requests
 
 class MalimarSeries:
     def __init__(self, mr_session):
-        # todo: add self.connection_up
-        # todo: add self.connection_down - pass connections as arguments and then just the mr_session_down as a string
         self.mr_session_down = mr_session
 
         self.xnat_paths_dict = {'dixon': {'in': [], 'out': [], 'fat': [], 'water': []},
                                 'diffusion': {'b50': [], 'b600': [], 'b900': [], 'adc': [], 'bvals': []}}
 
-        self.local_paths_dict = {'dixon': {'in': [], 'out': [], 'fat': [], 'water': []},
-                                 'diffusion': {'b50': [], 'b600': [], 'b900': [], 'adc': [], 'bvals': []}}
+        self.local_paths_dict = {'dixon': {'in': '', 'out': '', 'fat': '', 'water': ''},
+                                 'diffusion': {'b50': '', 'b600': '', 'b900': '', 'adc': '', 'bvals': ''}}
 
         self.complete = False
         self.duplicates = False
@@ -90,10 +88,10 @@ class MalimarSeries:
         complete = ((1, 1, 1, 1), (1, 0, 1, 1, 0))  # Avanto complete
         # TODO: Be useful to print which series are missing
         a = []
-        for group, comp in zip(self.xnat_paths_dict, complete):
-            for key, c in zip(self.xnat_paths_dict[group], comp):
+        for sequence, comp in zip(self.xnat_paths_dict, complete):
+            for series, c in zip(self.xnat_paths_dict[sequence], comp):
                 if c:  # if the series is required
-                    a.append(len(self.xnat_paths_dict[group][key]) - c)
+                    a.append(len(self.xnat_paths_dict[sequence][series]) - c)
         self.complete = min(a) > -1
         if self.complete:
             print('All required series found!')
@@ -107,31 +105,48 @@ class MalimarSeries:
 
     def download_series(self):
         os.mkdir('temp/dicoms')
-        for group in self.xnat_paths_dict:
-            for key in self.xnat_paths_dict[group]:
-                for i, item in enumerate(self.xnat_paths_dict[group][key]):
-                    path = os.path.join('temp/dicoms', key)
+        for sequence in self.xnat_paths_dict:
+            for series in self.xnat_paths_dict[sequence]:
+                for i, item in enumerate(self.xnat_paths_dict[sequence][series]):
+                    path = os.path.join('temp/dicoms', series)
                     if i:
-                        path = path+'_'+str(i+1)
-                    print('Downloading: ', key)
+                        print('ERROR: Multiple series of same type trying to be downloaded!')
+                    print('Downloading: ', series)
                     item.download_dir(path)
-                    self.local_paths_dict[group][key].append(path)
+                    self.local_paths_dict[sequence][series] = path
 
     def clean(self):
-        self.is_clean = cleaning.SliceMatchedVolumes(self.local_paths_dict).generate()
+        local_paths_list = []
+        series_descriptions = []
+        series_numbers = []
+        ser_no = 1
+        group_descriptions = ['dixon', 'diffusion']
+
+        for seq_no, sequence in enumerate(self.local_paths_dict):
+            local_paths_list.append([])
+            series_descriptions.append([])
+            series_numbers.append([])
+            for series in self.local_paths_dict[sequence]:
+                if len(self.local_paths_dict[sequence][series]):
+                    local_paths_list[seq_no].append(self.local_paths_dict[sequence][series])
+                    series_descriptions[seq_no].append(series)
+                    series_numbers[seq_no].append(ser_no)
+                ser_no += 1
+        self.is_clean = cleaning.SliceMatchedVolumes(local_paths_list, group_descriptions, series_descriptions,
+                                                     series_numbers, uid_prefix='1.2.826.0.1.534147.').generate()
         return self.is_clean
 
     def generate_nifti(self):
         os.mkdir('temp/nifti')
         for sequence in self.local_paths_dict:
             for series in self.local_paths_dict[sequence]:
-                for i, path in enumerate(self.local_paths_dict[sequence][series]):
+                if len(self.local_paths_dict[sequence][series]):
+                    path = self.local_paths_dict[sequence][series]
                     dicom2nifti.settings.enable_validate_slice_increment()
                     filename = series
-                    if i:
-                        filename = filename+'_'+str(i+1)
                     print('Converting', sequence, '-', filename, 'to', filename + '.nii.gz')
-                    try:                        dicom2nifti.convert_dicom.dicom_series_to_nifti(path, 'temp/nifti/'+filename+'.nii.gz')
+                    try:
+                        dicom2nifti.convert_dicom.dicom_series_to_nifti(path, 'temp/nifti/'+filename+'.nii.gz')
                     except Exception as e:
                         print(e)
 
@@ -185,3 +200,5 @@ class MalimarSeries:
         mr_session_up = MalimarSeries.upload_dicom('temp/dicoms', connection_up, project)
         MalimarSeries.upload_nifti(mr_session_up)
         MalimarSeries.upload_seg(mr_session_up, 'RMH_083_20170309_t1seg_theo.nii.gz', 'in')
+
+    # need to write method to upload crf, see phone camera for placement
