@@ -43,20 +43,29 @@ class SliceMatchedVolumes:
                             rows.append(dict1)
 
                 df = pd.DataFrame(rows, columns=dict1.keys())
-                df.sort_values(by=['SliceLocation'], inplace=True)
                 self.df = self.df.append(df)
 
-        self.df.set_index(['Sequence', 'Series'], inplace=True)
-        self.df.sort_index()  # to prevent 'indexing past lexsort depth' warning
+        self.df.set_index(['Sequence', 'Series', 'InstanceNumber'], drop=False, inplace=True)
+        self.df.drop(['Sequence', 'Series'], axis=1, inplace=True)  # Keep InstanceNumber column
+        self.df.rename_axis(index={'InstanceNumber': 'Slice'}, inplace=True)
+
+        self.df.sort_index(inplace=True)  # to prevent 'indexing past lexsort depth' warning
         print('List of Dataframes of DICOM headers constructed')
 
     def correct_slice_order(self):
         print('Checking DICOM slice order')
-        for idx in self.df.index:  # level = [0,1] == ['Sequence','Series']
-            if not self.df.loc[idx, 'InstanceNumber'].is_monotonic:
-                print('Correcting', idx, 'slice order and rewriting DICOM header')
-                self.df.loc[idx, 'InstanceNumber'] = range(1, len(self.df.loc[idx, 'InstanceNumber']) + 1)
+        self.df.sort_values(by=['Sequence', 'Series', 'SliceLocation'], inplace=True)
+        for idx, df_select in self.df.groupby(['Sequence', 'Series']):  # level = [0,1] == ['Sequence','Series']
+            if not df_select['InstanceNumber'].is_monotonic:
+                print('Correcting', idx, 'slice order')
+                self.df.loc[idx, 'InstanceNumber'] = range(1, len(df_select) + 1)
                 self.num_slice_order_corrected += 1
+
+        self.df.reset_index(inplace=True)
+        self.df.set_index(['Sequence', 'Series', 'InstanceNumber'], drop=False, inplace=True)
+        self.df.drop(['Sequence', 'Series'], axis=1, inplace=True)  # Keep InstanceNumber column
+        self.df.rename_axis(index={'InstanceNumber': 'Slice'}, inplace=True)
+        self.df.sort_index(inplace=True)
 
 # Things to check: in plane resolution, slice issues, fields of view,
     def correct_inplane_resolution(self):
@@ -88,7 +97,7 @@ class SliceMatchedVolumes:
 
     def rewrite_uids(self):
         # series UID, instance UID in df
-        for idx in self.df.index:  # group by series effectively
+        for idx, df_select in self.df.groupby(['Sequence', 'Series']):
             series_uid = pydicom.uid.generate_uid(prefix=self.uid_prefix)
             self.df.loc[idx, 'SeriesInstanceUID'] = series_uid
             #[x = pydicom.uid.generate_uid(prefix=self.uid_prefix) for x in self.df['SOPInstanceUID']]
@@ -109,6 +118,7 @@ class SliceMatchedVolumes:
             ds.save_as(slice_.Path)
 
     def generate(self):
+        self.correct_slice_order()
         self.correct_inplane_resolution()
         self.match_slice_locations()
         self.rewrite_uids()

@@ -25,6 +25,7 @@ with xnat.connect(server=anon) as connection_down:
                 malimarSeries.upload_series(connection_up, 'MALIMAR_local')
 
         # TODO: In cleaning change 'Sequence' to 'Group' -- OR remove group descriptions and just index based on dummy group name
+        # TODO: Finish uids
 
         # TODO: Get segmentation to be displayed properly..
         # TODO: Improve console prints
