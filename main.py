@@ -1,4 +1,5 @@
 import xnat
+import pandas as pd
 from data_io import MalimarSeries
 
 local = 'http://localhost'
@@ -10,6 +11,8 @@ with xnat.connect(server=anon) as connection_down:
 
         print('Successfully connected to: ', connection_down._original_uri,
               ' as user: ', connection_down._logged_in_user)
+
+        #  transfer_df = pd.read_excel('phase1_transfer.xlsx')
 
         project = connection_down.projects["MALIMAR_ALL"]
         print('Project: ', project.name)
@@ -24,15 +27,15 @@ with xnat.connect(server=anon) as connection_down:
                 malimarSeries.generate_nifti()
                 malimarSeries.upload_series(connection_up, 'MALIMAR_local')
 
-        # TODO: In cleaning change 'Sequence' to 'Group' -- OR remove group descriptions and just index based on dummy group name
-        # TODO: Finish uids
 
-        # TODO: Get segmentation to be displayed properly..
+        # TODO: Custom Variables
+
+        # TODO: Need XNAT_ICR to fix OHIF + ROIUploader -- might give up on this and just upload as resource
         # TODO: Improve console prints
-        # TODO: Implement Spreadsheet
-        # TODO: Custom Variables or spreadhseet?
+
         # TODO: Unpack Aera b-values
         # TODO: inplane resolution correction
         # TODO: Slice resampling
         # TODO: figure out coronal data.....
+        # TODO: In cleaning change 'Sequence' to 'Group' -- OR remove group descriptions and just index based on dummy group name
         # TODO: allow series/group descriptions + series number to be left empty and write init function to make default ones

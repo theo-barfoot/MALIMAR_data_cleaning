@@ -199,6 +199,6 @@ class MalimarSeries:
     def upload_series(connection_up, project):
         mr_session_up = MalimarSeries.upload_dicom('temp/dicoms', connection_up, project)
         MalimarSeries.upload_nifti(mr_session_up)
-        MalimarSeries.upload_seg(mr_session_up, 'RMH_083_20170309_t1seg_theo.nii.gz', 'in')
+        #  MalimarSeries.upload_seg(mr_session_up, 'RMH_083_20170309_t1seg_theo.nii.gz', 'in')
 
     # need to write method to upload crf, see phone camera for placement

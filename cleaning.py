@@ -54,7 +54,7 @@ class SliceMatchedVolumes:
 
     def correct_slice_order(self):
         print('Checking DICOM slice order')
-        self.df.sort_values(by=['Sequence', 'Series', 'SliceLocation'], inplace=True)
+        self.df.sort_values(by=['Sequence', 'Series', 'SliceLocation'], ascending=False, inplace=True)
         for idx, df_select in self.df.groupby(['Sequence', 'Series']):  # level = [0,1] == ['Sequence','Series']
             if not df_select['InstanceNumber'].is_monotonic:
                 print('Correcting', idx, 'slice order')
@@ -62,10 +62,11 @@ class SliceMatchedVolumes:
                 self.num_slice_order_corrected += 1
 
         self.df.reset_index(inplace=True)
+        self.df.drop('Slice', axis=1, inplace=True)
         self.df.set_index(['Sequence', 'Series', 'InstanceNumber'], drop=False, inplace=True)
-        self.df.drop(['Sequence', 'Series'], axis=1, inplace=True)  # Keep InstanceNumber column
+        self.df.drop(['Sequence', 'Series'], axis=1, inplace=True)
         self.df.rename_axis(index={'InstanceNumber': 'Slice'}, inplace=True)
-        self.df.sort_index(inplace=True)
+        self.df.sort_index(inplace=True)  # Basically just resetting the slice index to match the new instance number
 
 # Things to check: in plane resolution, slice issues, fields of view,
     def correct_inplane_resolution(self):
@@ -96,12 +97,20 @@ class SliceMatchedVolumes:
         # a.last()  -- will check for first and last slice
 
     def rewrite_uids(self):
-        # series UID, instance UID in df
+
+        # At the moment all UIDs are changed as code changes series number/description for all, but needs to be changed
+        # at some point to allow optionally no series desc/num
+        # Rewrite all Seires Instance UIDs:
         for idx, df_select in self.df.groupby(['Sequence', 'Series']):
             series_uid = pydicom.uid.generate_uid(prefix=self.uid_prefix)
             self.df.loc[idx, 'SeriesInstanceUID'] = series_uid
-            #[x = pydicom.uid.generate_uid(prefix=self.uid_prefix) for x in self.df['SOPInstanceUID']]
-            # need to figure out best way to iterate over df and change each value
+
+        # Rewrite all SOP Instance UIDs:
+        self.df.SOPInstanceUID = self.df.SOPInstanceUID.apply(lambda x: pydicom.uid.generate_uid(prefix=self.uid_prefix))
+
+        # # Equivalent but slower: - Probably very useful for pixel calculations to come
+        # for idx, df_select in self.df.groupby(['Sequence', 'Series', 'Slice']):
+        #     self.df.loc[idx, 'SOPInstanceUID'] = pydicom.uid.generate_uid(prefix=self.uid_prefix)
 
     def edit_dicom(self):
         for slice_ in self.df.itertuples():
@@ -125,9 +134,7 @@ class SliceMatchedVolumes:
         self.edit_dicom()
         if self.num_inplane_dim_mismatch == 0 and self.slice_matched:
             self.is_clean = True
-        # self.df.drop('SeriesInstanceUID', axis=1)
-        # self.df.drop('SOPInstanceUID', axis=1)
-        # self.df.to_excel('df.xlsx')
+
         self.df.to_csv('df.csv')
         return self.is_clean
 
