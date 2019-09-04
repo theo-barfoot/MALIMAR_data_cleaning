@@ -1,5 +1,5 @@
 import os
-import cleaning
+from cleaning import SliceMatchedVolumes
 import dicom2nifti
 import shutil
 # import xml.etree.cElementTree as ET
@@ -14,6 +14,7 @@ import requests
 class MalimarSeries:
     def __init__(self, mr_session):
         self.mr_session_down = mr_session
+        self.mr_session_up = None
 
         self.xnat_paths_dict = {'dixon': {'in': [], 'out': [], 'fat': [], 'water': []},
                                 'diffusion': {'b50': [], 'b600': [], 'b900': [], 'adc': [], 'bvals': []}}
@@ -23,6 +24,8 @@ class MalimarSeries:
 
         self.complete = False
         self.duplicates = False
+
+        self.hygiene = {'num_slice_order_corrected': 0, 'num_inplane_dim_mismatch': 0, 'slice_matched': False}
         self.is_clean = False
 
         self.__filter_xnat_session()
@@ -132,9 +135,15 @@ class MalimarSeries:
                     series_descriptions[seq_no].append(series)
                     series_numbers[seq_no].append(ser_no)
                 ser_no += 1
-        self.is_clean = cleaning.SliceMatchedVolumes(local_paths_list, group_descriptions, series_descriptions,
-                                                     series_numbers, uid_prefix='1.2.826.0.1.534147.').generate()
-        return self.is_clean
+
+        matched_volume = SliceMatchedVolumes(local_paths_list, group_descriptions, series_descriptions,
+                                                     series_numbers, uid_prefix='1.2.826.0.1.534147.')
+        matched_volume.generate()
+
+        for param in self.hygiene:
+            self.hygiene[param] = getattr(matched_volume, param)
+
+        self.is_clean = matched_volume.is_clean
 
     def generate_nifti(self):
         os.mkdir('temp/nifti')
@@ -153,30 +162,50 @@ class MalimarSeries:
                         #  dicom2nifti.settings.disable_validate_slice_increment()
                         #  dicom2nifti.convert_dicom.dicom_series_to_nifti(path, 'temp/nifti/'+filename+'.nii.gz')
 
-    @staticmethod
-    def upload_nifti(mr_session_up):
-        scans = mr_session_up.scans
+    def upload_dicom(self, project_up):
+        path = 'temp/dicoms'
+        print('Zipping DICOMs')
+        shutil.make_archive(path, 'zip', path)
+        connection_up = project_up.xnat_session
+        print('Uploading DICOMs to', connection_up._original_uri)
+        pre = connection_up.services.import_('temp/dicoms.zip', project=project_up.id, destination='/prearchive')
+        print('Archiving MrSessionData')
+        self.mr_session_up = pre.archive()
+        print(self.mr_session_up.label, 'successfully archived')
+
+        scans = self.mr_session_up.scans
+        for i, scan in scans.items():
+            print('Changing XNAT scan type', scan.type, 'to:', scan.series_description.split('_')[0])
+            scan.type = scan.series_description.split('_')[0]  # Can probably remove splits now
+
+        self.mr_session_up = connection_up.experiments[self.mr_session_up.label]
+        # Required to update object with new types
+
+    def upload_nifti(self):
+        scans = self.mr_session_up.scans
         for i, scan in scans.items():
             a = scan.create_resource(label='NIFTI', format='NIFTI')
             print('Uploading', scan.series_description + '.nii.gz')
             scan.resources['NIFTI'].upload('temp/nifti/' + scan.series_description + '.nii.gz', scan.series_description + '.nii.gz')
         # TODO: Really need to clean these file paths
 
-    @staticmethod
-    def upload_dicom(path, connection_up, project):
-        print('Zipping DICOMs')
-        shutil.make_archive(path, 'zip', path)
-        print('Uploading DICOMs to', connection_up._original_uri)
-        pre = connection_up.services.import_('temp/dicoms.zip', project=project, destination='/prearchive')
-        print('Archiving MrSessionData')
-        mr_session_up = pre.archive()
-        print(mr_session_up.label, 'successfully archived')
+    def upload_series(self, project_up):
+        MalimarSeries.upload_dicom(self, project_up)
+        MalimarSeries.generate_nifti(self)
+        MalimarSeries.upload_nifti(self)
+        #  MalimarSeries.upload_seg(mr_session_up, 'RMH_083_20170309_t1seg_theo.nii.gz', 'in')
 
-        scans = mr_session_up.scans
-        for i, scan in scans.items():
-            print('Changing XNAT scan type', scan.type, 'to:', scan.series_description.split('_')[0])
-            scan.type = scan.series_description.split('_')[0]  # this doesn't change mr_sessions_up object
-        return connection_up.experiments[mr_session_up.label]
+    def upload_session_vars(self, row):
+
+        session_vars = ['disease_pattern', 'disease_category', 'dixon_orientation', 'cm_comments',
+                        'mk_comments', 'tb_comments', 'response_mk_imwg']
+
+        for var in session_vars:
+            self.mr_session_up.fields[var] = getattr(row, var)
+
+        self.mr_session_up.set('Age', row.Age)
+
+        # need to write method to upload crf, see phone camera for placement
 
     @staticmethod
     def upload_seg(mr_session_up, path, series):
@@ -195,10 +224,10 @@ class MalimarSeries:
         print(response)
         file_handle.close()
 
-    @staticmethod
-    def upload_series(connection_up, project):
-        mr_session_up = MalimarSeries.upload_dicom('temp/dicoms', connection_up, project)
-        MalimarSeries.upload_nifti(mr_session_up)
-        #  MalimarSeries.upload_seg(mr_session_up, 'RMH_083_20170309_t1seg_theo.nii.gz', 'in')
 
-    # need to write method to upload crf, see phone camera for placement
+
+
+
+
+
+

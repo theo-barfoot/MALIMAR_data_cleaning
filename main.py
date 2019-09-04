@@ -9,26 +9,51 @@ colab = 'https://xnatcruk.icr.ac.uk/XNAT_ICR_COLLABORATIONS'
 with xnat.connect(server=anon) as connection_down:
     with xnat.connect(server=local) as connection_up:
 
-        print('Successfully connected to: ', connection_down._original_uri,
+        print('Successfully connected to download server: ', connection_down._original_uri,
               ' as user: ', connection_down._logged_in_user)
+        print('Successfully connected to upload server: ', connection_up._original_uri,
+              ' as user: ', connection_up._logged_in_user)
 
-        #  transfer_df = pd.read_excel('phase1_transfer.xlsx')
+        project_down = connection_down.projects['MALIMAR_ALL']
+        print('Download project: ', project_down.name)
+        project_up = connection_up.projects['MALIMAR_local']
+        print('Upload project: ', project_up.name)
 
-        project = connection_down.projects["MALIMAR_ALL"]
-        print('Project: ', project.name)
-        mrSession = project.experiments['20170223_100216_Avanto']
-        print('-------------------------------------------------')
-        print('MR Session: ', mrSession.label)
-        malimarSeries = MalimarSeries(mrSession)
-        if malimarSeries.complete:
-            malimarSeries.download_series()
-            malimarSeries.clean()
-            if malimarSeries.is_clean:
-                malimarSeries.generate_nifti()
-                malimarSeries.upload_series(connection_up, 'MALIMAR_local')
+        transfer_list = pd.read_excel('phase1_transfer.xlsx')
+        hygiene_report = pd.read_excel('hygiene_report.xlsx')
 
+        for idx, row in enumerate(transfer_list.itertuples()):
+
+            mrSession_id = row.mr_session_id_xnat_colab
+            print('{}:-------------------------{}-------------------------'.format(idx+1, mrSession_id))
+
+            if mrSession_id in project_down.experiments and mrSession_id not in project_up.experiments:
+                mrSession = project_down.experiments[mrSession_id]
+                malimarSeries = MalimarSeries(mrSession)
+                if malimarSeries.complete:
+                    malimarSeries.download_series()  # may be better to use the language session rather than series
+                    malimarSeries.clean()
+                    if malimarSeries.is_clean:
+                        malimarSeries.upload_series(project_up)
+                        malimarSeries.upload_session_vars(row)
+
+                hygiene_report = hygiene_report.append(pd.DataFrame(malimarSeries.hygiene.update({'session_id': mrSession_id}),
+                                                                    index=[0]), sort=False)[hygiene_report.columns.tolist()]
+                #  index to prevent: 'ValueError: If using all scalar values, you must pass an index'
+                #  columns.tolist() required to maintain column order, ie session_id first
+
+            elif mrSession_id not in project_down.experiments:
+                print(mrSession_id, 'NOT FOUND!')
+
+            elif mrSession_id in project_up.experiments:
+                print(mrSession_id, 'ALREADY UPLOADED!')
+
+        hygiene_report.to_excel('hygiene_report.xlsx', index=False)
 
         # TODO: Custom Variables
+        # TODO: if field = nan then skip
+        # TODO: Add further console prints
+        # TODO: Add results of cleaning to spreadsheet
 
         # TODO: Need XNAT_ICR to fix OHIF + ROIUploader -- might give up on this and just upload as resource
         # TODO: Improve console prints

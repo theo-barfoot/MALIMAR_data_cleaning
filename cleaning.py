@@ -112,6 +112,8 @@ class SliceMatchedVolumes:
         # for idx, df_select in self.df.groupby(['Sequence', 'Series', 'Slice']):
         #     self.df.loc[idx, 'SOPInstanceUID'] = pydicom.uid.generate_uid(prefix=self.uid_prefix)
 
+        #     self.df.at[idx, 'SOPInstanceUID'] = ...... is another, possibly better method.
+
     def edit_dicom(self):
         for slice_ in self.df.itertuples():
             ds = pydicom.dcmread(slice_.Path)
@@ -136,7 +138,6 @@ class SliceMatchedVolumes:
             self.is_clean = True
 
         self.df.to_csv('df.csv')
-        return self.is_clean
 
 # probably going to be best to write this so that it checks if the volume is clean and if not then you call
 # the cleaning function, rather than having the two together
