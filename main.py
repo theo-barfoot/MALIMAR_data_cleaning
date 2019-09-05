@@ -20,7 +20,7 @@ with xnat.connect(server=anon) as connection_down:
         print('Upload project: ', project_up.name)
 
         transfer_list = pd.read_excel('phase1_transfer.xlsx')
-        hygiene_report = pd.read_excel('hygiene_report.xlsx')
+        hygiene_report = pd.read_csv('hygiene_report.csv')
 
         for idx, row in enumerate(transfer_list.itertuples()):
 
@@ -36,9 +36,10 @@ with xnat.connect(server=anon) as connection_down:
                     if malimarSeries.is_clean:
                         malimarSeries.upload_series(project_up)
                         malimarSeries.upload_session_vars(row)
-
-                hygiene_report = hygiene_report.append(pd.DataFrame(malimarSeries.hygiene.update({'session_id': mrSession_id}),
-                                                                    index=[0]), sort=False)[hygiene_report.columns.tolist()]
+                hygiene = malimarSeries.hygiene
+                hygiene.update({'session_id': mrSession_id})
+                hygiene_report = hygiene_report.append(pd.DataFrame(hygiene, index=[0]),
+                                                       sort=False)[hygiene_report.columns.tolist()]
                 #  index to prevent: 'ValueError: If using all scalar values, you must pass an index'
                 #  columns.tolist() required to maintain column order, ie session_id first
 
@@ -48,15 +49,9 @@ with xnat.connect(server=anon) as connection_down:
             elif mrSession_id in project_up.experiments:
                 print(mrSession_id, 'ALREADY UPLOADED!')
 
-        hygiene_report.to_excel('hygiene_report.xlsx', index=False)
-
-        # TODO: Custom Variables
-        # TODO: if field = nan then skip
-        # TODO: Add further console prints
-        # TODO: Add results of cleaning to spreadsheet
+        hygiene_report.to_csv('hygiene_report.csv', index=False)
 
         # TODO: Need XNAT_ICR to fix OHIF + ROIUploader -- might give up on this and just upload as resource
-        # TODO: Improve console prints
 
         # TODO: Unpack Aera b-values
         # TODO: inplane resolution correction

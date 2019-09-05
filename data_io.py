@@ -7,6 +7,7 @@ import shutil
 # import uuid
 # from io import BytesIO
 import requests
+import pandas as pd
 
 #  import SimpleITK as sitk
 
@@ -40,7 +41,7 @@ class MalimarSeries:
 
         takes in XNATpy MRSessionData object and returns XNATpy MRScanData Object.
         """
-        print('Identifying required series for MALIMAR')
+        print('-- Identifying required series for MALIMAR --')
         tra = [1, 0, 0, 0, 1, 0]
         cor = [1, 0, 0, 0, 0, -1]
 
@@ -107,6 +108,7 @@ class MalimarSeries:
         return self
 
     def download_series(self):
+        print('-- Downloading DICOM Series --')
         os.mkdir('temp/dicoms')
         for sequence in self.xnat_paths_dict:
             for series in self.xnat_paths_dict[sequence]:
@@ -119,6 +121,8 @@ class MalimarSeries:
                     self.local_paths_dict[sequence][series] = path
 
     def clean(self):
+        print('---- Cleaning DICOM Series ----')
+
         local_paths_list = []
         series_descriptions = []
         series_numbers = []
@@ -146,6 +150,8 @@ class MalimarSeries:
         self.is_clean = matched_volume.is_clean
 
     def generate_nifti(self):
+        print('-- Convertion DICOMs to NIfTIs --')
+
         os.mkdir('temp/nifti')
         for sequence in self.local_paths_dict:
             for series in self.local_paths_dict[sequence]:
@@ -153,7 +159,7 @@ class MalimarSeries:
                     path = self.local_paths_dict[sequence][series]
                     dicom2nifti.settings.enable_validate_slice_increment()
                     filename = series
-                    print('Converting', sequence, '-', filename, 'to', filename + '.nii.gz')
+                    print('Converting', sequence, '-', filename+'.dcm', 'to', filename + '.nii.gz')
                     try:
                         dicom2nifti.convert_dicom.dicom_series_to_nifti(path, 'temp/nifti/'+filename+'.nii.gz')
                     except Exception as e:
@@ -163,6 +169,8 @@ class MalimarSeries:
                         #  dicom2nifti.convert_dicom.dicom_series_to_nifti(path, 'temp/nifti/'+filename+'.nii.gz')
 
     def upload_dicom(self, project_up):
+        print('-- Uplading DICOMs --')
+
         path = 'temp/dicoms'
         print('Zipping DICOMs')
         shutil.make_archive(path, 'zip', path)
@@ -182,6 +190,8 @@ class MalimarSeries:
         # Required to update object with new types
 
     def upload_nifti(self):
+        print('-- Uploading NIFTIs --')
+
         scans = self.mr_session_up.scans
         for i, scan in scans.items():
             a = scan.create_resource(label='NIFTI', format='NIFTI')
@@ -196,12 +206,16 @@ class MalimarSeries:
         #  MalimarSeries.upload_seg(mr_session_up, 'RMH_083_20170309_t1seg_theo.nii.gz', 'in')
 
     def upload_session_vars(self, row):
+        print('-- Uploading Session Variables --')
 
         session_vars = ['disease_pattern', 'disease_category', 'dixon_orientation', 'cm_comments',
                         'mk_comments', 'tb_comments', 'response_mk_imwg']
 
         for var in session_vars:
-            self.mr_session_up.fields[var] = getattr(row, var)
+            val = getattr(row, var)
+            if not pd.isna(val):
+                print('Uploading', val, 'to field', var)
+                self.mr_session_up.fields[var] = val
 
         self.mr_session_up.set('Age', row.Age)
 
@@ -217,6 +231,7 @@ class MalimarSeries:
         label = 't1seg'  # needs changing - not sure exactly what it is best as
 
         uri = '{}/xapi/roi/projects/{}/sessions/{}/collections/{}?type=NIFTI&overwrite=true&seriesuid={}'.format(root_uri, project, session_id, label, series_uid)
+        print(uri)
         headers = {'Content-Type': 'application/octet-stream'}
         file_handle = open(path, 'rb')
 

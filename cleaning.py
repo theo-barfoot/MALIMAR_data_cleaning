@@ -50,10 +50,10 @@ class SliceMatchedVolumes:
         self.df.rename_axis(index={'InstanceNumber': 'Slice'}, inplace=True)
 
         self.df.sort_index(inplace=True)  # to prevent 'indexing past lexsort depth' warning
-        print('List of Dataframes of DICOM headers constructed')
+        print('Dataframe of DICOM headers constructed')
 
     def correct_slice_order(self):
-        print('Checking DICOM slice order')
+        print('-- Checking DICOM slice order --')
         self.df.sort_values(by=['Sequence', 'Series', 'SliceLocation'], ascending=False, inplace=True)
         for idx, df_select in self.df.groupby(['Sequence', 'Series']):  # level = [0,1] == ['Sequence','Series']
             if not df_select['InstanceNumber'].is_monotonic:
@@ -70,7 +70,7 @@ class SliceMatchedVolumes:
 
 # Things to check: in plane resolution, slice issues, fields of view,
     def correct_inplane_resolution(self):
-        print('Checking in-plane resolution')
+        print('-- Checking in-plane resolution --')
         for idx, df_select in self.df.groupby('Sequence'):
             if not df_select['Columns'].nunique() == 1 and df_select['Rows'].nunique() == 1:
                 print(idx, 'in-plane resolution MISMATCH')
@@ -80,6 +80,7 @@ class SliceMatchedVolumes:
                 print(idx, 'in-plane resolution MATCH')
 
     def match_slice_locations(self):
+        print('-- Matching Slices between Series --')
         a = self.df.groupby(level=[0, 1])['SliceLocation']
         # Check all series have the same number of slices:
         if a.count().nunique() == 1:
@@ -97,7 +98,7 @@ class SliceMatchedVolumes:
         # a.last()  -- will check for first and last slice
 
     def rewrite_uids(self):
-
+        print('-- Editing UIDs --')
         # At the moment all UIDs are changed as code changes series number/description for all, but needs to be changed
         # at some point to allow optionally no series desc/num
         # Rewrite all Seires Instance UIDs:
@@ -115,6 +116,7 @@ class SliceMatchedVolumes:
         #     self.df.at[idx, 'SOPInstanceUID'] = ...... is another, possibly better method.
 
     def edit_dicom(self):
+        print('-- Rewriting DICOM files --')
         for slice_ in self.df.itertuples():
             ds = pydicom.dcmread(slice_.Path)
             ds.SeriesDescription = slice_.Index[1]
