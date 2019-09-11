@@ -15,17 +15,20 @@ class SliceMatchedVolumes:
         self.uid_prefix = uid_prefix
 
         self.fields = ['InstanceNumber', 'SliceLocation', 'SliceThickness', 'Rows', 'Columns',
-                       'PixelSpacing', 'SeriesInstanceUID', 'SOPInstanceUID']
+                       'PixelSpacing', 'ImagePositionPatient', 'SeriesInstanceUID', 'SOPInstanceUID']
 
         self.df = pd.DataFrame()
         self.build_dcm_data_frames()
 
         self.num_slice_order_corrected = 0
         self.num_inplane_dim_mismatch = 0
+        self.num_non_contiguous = 0
+        self.num_fov = 0
         self.slice_matched = False
         self.is_clean = False
 
     def build_dcm_data_frames(self):
+        print('-- Building DICOM Dataframe --')
         for g, group in enumerate(self.paths):
             for i, path in enumerate(group):
                 rows = []
@@ -43,6 +46,12 @@ class SliceMatchedVolumes:
                             rows.append(dict1)
 
                 df = pd.DataFrame(rows, columns=dict1.keys())
+                # Convert string (eg "['_', '_', '_']" to list of strings (eg ['_', '_', '_']):
+                ##df['ImagePositionPatient'] = df['ImagePositionPatient'].apply(lambda x: ast.literal_eval(x))
+                # Convert list of strings to list of floats (eg [ _ , _ , _ ]):
+                df['ImagePositionPatient'] = df['ImagePositionPatient'].apply(lambda x: [float(elem) for elem in x])
+                ##df['PixelSpacing'] = df['PixelSpacing'].apply(lambda x: ast.literal_eval(x))
+                df['PixelSpacing'] = df['PixelSpacing'].apply(lambda x: [float(elem) for elem in x])
                 self.df = self.df.append(df)
 
         self.df.set_index(['Sequence', 'Series', 'InstanceNumber'], drop=False, inplace=True)
@@ -56,7 +65,9 @@ class SliceMatchedVolumes:
         print('-- Checking DICOM slice order --')
         self.df.sort_values(by=['Sequence', 'Series', 'SliceLocation'], ascending=False, inplace=True)
         for idx, df_select in self.df.groupby(['Sequence', 'Series']):  # level = [0,1] == ['Sequence','Series']
-            if not df_select['InstanceNumber'].is_monotonic:
+            if df_select['InstanceNumber'].is_monotonic:
+                print(idx, 'Slice order correct')
+            else:
                 print('Correcting', idx, 'slice order')
                 self.df.loc[idx, 'InstanceNumber'] = range(1, len(df_select) + 1)
                 self.num_slice_order_corrected += 1
@@ -72,30 +83,75 @@ class SliceMatchedVolumes:
     def correct_inplane_resolution(self):
         print('-- Checking in-plane resolution --')
         for idx, df_select in self.df.groupby('Sequence'):
-            if not df_select['Columns'].nunique() == 1 and df_select['Rows'].nunique() == 1:
+            if df_select['Columns'].nunique() == 1 and df_select['Rows'].nunique() == 1:
+                print(idx, 'in-plane resolution MATCH')
+            else:
                 print(idx, 'in-plane resolution MISMATCH')
                 self.num_inplane_dim_mismatch += 1
                 # TODO: resample in plane resolution to mode resoltuion
-            else:
-                print(idx, 'in-plane resolution MATCH')
 
-    def match_slice_locations(self):
+    def match_slice_locations(self):  # this needs changing
         print('-- Matching Slices between Series --')
         a = self.df.groupby(level=[0, 1])['SliceLocation']
         # Check all series have the same number of slices:
         if a.count().nunique() == 1:
-            # Check for duplicate slices in each series:
-            if all(a.count() == a.nunique()):  # or a.count().equals(a.nunique())
-                # Check all slice locations are the same between series:
-                match = []
-                for i in range(len(a.unique()) - 1):
-                    match.append((a.unique()[i + 1].round(2) == a.unique()[i].round(2)).all())
-                if sum(match) == len(match):
-                    print('All slice (location and number) are matched between series')
-                    self.slice_matched = True
+            # Check all slice locations are the same between series:
+            match = []
+            for i in range(len(a.unique()) - 1):
+                match.append((a.unique()[i + 1].round(2) == a.unique()[i].round(2)).all())
+            if sum(match) == len(match):
+                print('All slice (location and number) are matched between series')
+                self.slice_matched = True
+            else:
+                print('Slices are not matched between series!')
+        else:
+            print('Slices are not matched between series!')
 
-        # a.first()
-        # a.last()  -- will check for first and last slice
+    def check_slice_contiguity(self):
+        print('-- Checking slice contiguity for all series --')
+        for idx, df_select in self.df.groupby(['Sequence', 'Series']):
+
+            if df_select['SliceThickness'].nunique() == 1:
+                st = df_select['SliceThickness'].unique()[0]
+            else:
+                print('WARNING: Multi slcie thickness series!')
+                st = df_select['SliceThickness'].mode()[0]
+
+            diff = df_select['SliceLocation'].diff().round(2).abs()
+            diff.dropna(inplace=True)
+            vals = diff.unique()
+
+            if all(elem == st for elem in vals):  # or: min_ == st and max_ == st:
+                print(idx, 'all', len(df_select), 'slice are contiguous')
+            else:
+                self.num_non_contiguous += 1
+                if any(elem == 0 for elem in vals):
+                    num = diff[diff == 0].count()  # or counts[counts.index == 0][0]
+                    print(idx, 'has', num, 'duplicated slices')
+                if any(0 < elem < st for elem in vals):
+                    num = pd.cut(diff, [0.01, st], right=False).count()
+                    print(idx, 'has', num, 'overlapping slices')
+                if any(elem > st for elem in vals):
+                    num = diff[diff > st].count()
+                    print(idx, 'has', num, 'underlapping slices',
+                          'largest gap is', diff.max() + 'mm')
+
+    def check_fov(self):
+        print('-- Checking FOVs between all series --')
+        ipp = self.df['ImagePositionPatient'].apply(lambda x: [round(elem, 2) for elem in x])
+        ipp_g = ipp.groupby(['Sequence', 'Series'])
+        mins = ipp_g.min().apply(lambda x: tuple(x))
+        maxs = ipp_g.max().apply(lambda x: tuple(x))
+        # lists are not hashable as they are mutable, therefore .nunique() doesn't work unless a tuple
+        if mins.nunique() == 1 and maxs.nunique() == 1:
+            print('FOVs for all series equal')
+            self.num_fov = 1
+        else:
+            self.num_fov = max(mins.nunique(), maxs.nunique())
+            print('FOVs not equal:')
+            print('Minimum pixel locations (mm):', '\n', mins)
+            print('-------------------')
+            print('Maximum pixel locations (mm):', '\n', maxs)
 
     def rewrite_uids(self):
         print('-- Editing UIDs --')
@@ -128,16 +184,20 @@ class SliceMatchedVolumes:
                     setattr(ds, field, ast.literal_eval(getattr(slice_, field)))
                     # Pixelspacing is stored in df as "['0.83984375', '0.83984375']"
                     # ast.literal_eval changes this back to ['0.83984375', '0.83984375']
+                    # Not required anymore as done in dataframe construction - TODO: may still need to convert to floats
             ds.save_as(slice_.Path)
 
     def generate(self):
         self.correct_slice_order()
         self.correct_inplane_resolution()
         self.match_slice_locations()
-        self.rewrite_uids()
-        self.edit_dicom()
-        if self.num_inplane_dim_mismatch == 0 and self.slice_matched:
+        self.check_slice_contiguity()
+        self.check_fov()
+        if (self.num_inplane_dim_mismatch == 0 and self.num_non_contiguous == 0 and self.num_fov == 1
+                and self.slice_matched):
             self.is_clean = True
+            self.rewrite_uids()
+            self.edit_dicom()
 
         self.df.to_csv('df.csv')
 

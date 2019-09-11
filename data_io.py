@@ -8,6 +8,7 @@ import shutil
 # from io import BytesIO
 import requests
 import pandas as pd
+import time
 
 #  import SimpleITK as sitk
 
@@ -26,7 +27,8 @@ class MalimarSeries:
         self.complete = False
         self.duplicates = False
 
-        self.hygiene = {'num_slice_order_corrected': 0, 'num_inplane_dim_mismatch': 0, 'slice_matched': False}
+        self.hygiene = {'num_slice_order_corrected': 0, 'num_inplane_dim_mismatch': 0, 'num_non_contiguous': 0,
+                        'num_fov': 0, 'slice_matched': False, 'is_clean': False}
         self.is_clean = False
 
         self.__filter_xnat_session()
@@ -117,7 +119,7 @@ class MalimarSeries:
                     if i:
                         print('ERROR: Multiple series of same type trying to be downloaded!')
                     print('Downloading: ', series)
-                    item.download_dir(path)
+                    item.download_dir(path, verbose=False)
                     self.local_paths_dict[sequence][series] = path
 
     def clean(self):
@@ -186,8 +188,11 @@ class MalimarSeries:
             print('Changing XNAT scan type', scan.type, 'to:', scan.series_description.split('_')[0])
             scan.type = scan.series_description.split('_')[0]  # Can probably remove splits now
 
-        self.mr_session_up = connection_up.experiments[self.mr_session_up.label]
-        # Required to update object with new types
+            try:  # this should not be indented, still seems to be working though
+                self.mr_session_up = connection_up.experiments[self.mr_session_up.label]
+            except KeyError:
+                project_up.xnat_session.clearcache()
+                self.mr_session_up = connection_up.experiments[self.mr_session_up.label]
 
     def upload_nifti(self):
         print('-- Uploading NIFTIs --')
