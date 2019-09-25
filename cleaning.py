@@ -2,6 +2,10 @@ import os
 import pandas as pd
 import pydicom
 import ast
+import SimpleITK as sitk
+import numpy as np
+import time
+import shutil
 
 
 class SliceMatchedVolumes:
@@ -19,13 +23,16 @@ class SliceMatchedVolumes:
 
         self.df = pd.DataFrame()
         self.build_dcm_data_frames()
-
         self.num_slice_order_corrected = 0
         self.num_inplane_dim_mismatch = 0
         self.num_non_contiguous = 0
         self.num_fov = 0
+        self.num_cor = 0
         self.slice_matched = False
         self.is_clean = False
+
+        self.image_volumes = []
+        self.readers = []
 
     def build_dcm_data_frames(self):
         print('-- Building DICOM Dataframe --')
@@ -80,7 +87,7 @@ class SliceMatchedVolumes:
         self.df.sort_index(inplace=True)  # Basically just resetting the slice index to match the new instance number
 
 # Things to check: in plane resolution, slice issues, fields of view,
-    def correct_inplane_resolution(self):
+    def check_inplane_resolution(self):
         print('-- Checking in-plane resolution --')
         for idx, df_select in self.df.groupby('Sequence'):
             if df_select['Columns'].nunique() == 1 and df_select['Rows'].nunique() == 1:
@@ -99,7 +106,7 @@ class SliceMatchedVolumes:
             match = []
             for i in range(len(a.unique()) - 1):
                 match.append((a.unique()[i + 1].round(2) == a.unique()[i].round(2)).all())
-            if sum(match) == len(match):
+            if sum(match) == len(match):  # Need to look at what the above is actually doing
                 print('All slice (location and number) are matched between series')
                 self.slice_matched = True
             else:
@@ -140,8 +147,8 @@ class SliceMatchedVolumes:
         print('-- Checking FOVs between all series --')
         ipp = self.df['ImagePositionPatient'].apply(lambda x: [round(elem, 2) for elem in x])
         ipp_g = ipp.groupby(['Sequence', 'Series'])
-        mins = ipp_g.min().apply(lambda x: tuple(x))
-        maxs = ipp_g.max().apply(lambda x: tuple(x))
+        mins = ipp_g.min().apply(lambda x: tuple(x))  # issue with this as sometimes the min isn't the min for all 3
+        maxs = ipp_g.max().apply(lambda x: tuple(x))  # try implement method used in resample volumes
         # lists are not hashable as they are mutable, therefore .nunique() doesn't work unless a tuple
         if mins.nunique() == 1 and maxs.nunique() == 1:
             print('FOVs for all series equal')
@@ -187,9 +194,172 @@ class SliceMatchedVolumes:
                     # Not required anymore as done in dataframe construction - TODO: may still need to convert to floats
             ds.save_as(slice_.Path)
 
+    def load_sitk_image_volumes(self):
+        print('--- Loading Image Volumes in SimpleITK ---')
+        for g, group in enumerate(self.paths):
+            self.image_volumes.append([])
+            self.readers.append([])
+            for i, path in enumerate(group):
+                for dirName, subdirList, fileList in os.walk(path):
+                    verbose_path = list(set([dirName for filename in fileList if filename.lower().endswith('.dcm')]))
+                    if len(verbose_path):  # this code is pretty gross but it works
+                        print('"' + self.series_descriptions[g][i] + '"', 'image volume loaded')
+                        reader = sitk.ImageSeriesReader()
+                        dcm_names = reader.GetGDCMSeriesFileNames(verbose_path[0])
+                        reader.SetFileNames(dcm_names)
+                        reader.MetaDataDictionaryArrayUpdateOn()
+                        reader.LoadPrivateTagsOn()
+                        self.image_volumes[g].append(reader.Execute())
+                        self.readers[g].append(reader)
+
+    def reformat_to_axial(self):
+        print('--- Checking for Coronal Image Volumes and Reformatting to Axial ---')
+        for g, group in enumerate(self.image_volumes):
+            for i, img in enumerate(group):
+                if img.GetDirection() == (1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, -1.0, 0.0):
+                    self.num_cor += 1
+                    print('"' + self.series_descriptions[g][i] + '"', 'in Coronal Orientation')
+                    spacing = (img.GetSpacing()[0], img.GetSpacing()[2], img.GetSpacing()[1])
+                    size = (img.GetSize()[0], img.GetSize()[2], img.GetSize()[1])
+                    direction = (1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0)
+                    origin = (img.GetOrigin()[0], img.GetOrigin()[1],
+                              img.GetOrigin()[2] - img.GetSpacing()[1] * img.GetSize()[1])
+
+                    print('Reformatting "' + self.series_descriptions[g][i] + '"', 'to Axial Orientation')
+
+                    resample = sitk.ResampleImageFilter()
+                    resample.SetOutputSpacing(spacing)
+                    resample.SetSize(size)
+                    resample.SetOutputDirection(direction)
+                    resample.SetOutputOrigin(origin)
+                    resample.SetTransform(sitk.Transform())
+                    resample.SetDefaultPixelValue(3)
+                    resample.SetInterpolator(sitk.sitkLinear)
+
+                    self.image_volumes[g][i] = resample.Execute(img)
+
+                if img.GetDirection() == (1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0):
+                    print('"' + self.series_descriptions[g][i] + '"', 'already in Axial Orientation')
+
+    def resample_volumes(self):
+        print('--- Resampling Image Volumes to match FOV and slice positions ---')
+
+        # determine global variables
+        imgs_flat = [img for group in self.image_volumes for img in group]  # flattens nested list
+        origin = tuple(np.max([img.GetOrigin()[i] for img in imgs_flat]) for i in range(3))
+        fov = tuple(np.min([img.GetSize()[i] * img.GetSpacing()[i] for img in imgs_flat]) for i in range(3))
+        directions = [img.GetDirection() for img in imgs_flat]
+        direction = max(set(directions), key=directions.count)
+
+        imgs_new = []
+
+        for g, group in enumerate(self.image_volumes):
+
+            # determine group parameters:
+            spacings = [img.GetSpacing() for img in group]
+            ref_spacing = max(set(spacings), key=spacings.count)
+            ref_size = tuple(int(round(fov / spacing, 0)) for fov, spacing in zip(fov, ref_spacing))
+
+            resample = sitk.ResampleImageFilter()
+            resample.SetOutputSpacing(ref_spacing)
+            resample.SetSize(ref_size)
+            resample.SetOutputDirection(direction)
+            resample.SetOutputOrigin(origin)
+            resample.SetTransform(sitk.Transform())
+            resample.SetDefaultPixelValue(3)
+            resample.SetInterpolator(sitk.sitkLinear)
+
+            print('Resampling Image Volumes:')
+            imgs_new.append([resample.Execute(img) for img in group])
+
+            for i, img in enumerate(group):
+                print('-------', self.series_descriptions[g][i], '-------')
+                print('Origin:', img.GetOrigin(), '---->', origin)
+                print('Direction:', img.GetDirection(), '---->', direction)
+                print('Spacing:', img.GetSpacing(), '---->', ref_spacing)
+                print('FOV:', tuple(sp * si for sp, si in zip(img.GetSpacing(), img.GetSize())),
+                      '---->', fov)
+                print('Size:', img.GetSize(), '---->', ref_size)
+
+        self.image_volumes = imgs_new
+
+    def write_sitk_image_volumes(self):
+        print('--- Writing DICOM Series from SimpleITK ---')
+        # shutil.rmtree('temp/dicoms_new', ignore_errors=True)
+        os.mkdir('temp/dicoms_new')
+        for g, group in enumerate(self.image_volumes):
+            for i, img in enumerate(group):
+                reader = self.readers[g][i]
+                series_description = self.series_descriptions[g][i]
+                series_number = self.series_numbers[g][i]
+
+                os.mkdir(os.path.join('temp/dicoms_new/', series_description))
+
+                writer = sitk.ImageFileWriter()
+                writer.KeepOriginalImageUIDOn()
+
+                tags_to_copy = ["0010|0010",  # Patient Name
+                                "0010|0020",  # Patient ID
+                                "0010|0030",  # Patient Birth Date
+                                "0010|0040",  # Patient Sex
+                                "0010|4000",  # Patient Comments
+                                "0020|000d",  # Study Instance UID, for machine consumption
+                                "0020|0010",  # Study ID, for human consumption
+                                "0008|0020",  # Study Date
+                                "0008|0030",  # Study Time
+                                "0008|0050",  # Accession Number
+                                "0008|0060",  # Modality
+                                "0018|5100"  # Patient Position
+                                ]  # in theory you don't need to repeat most info (patient and series) for each series
+
+                modification_time = time.strftime("%H%M%S")
+                modification_date = time.strftime("%Y%m%d")
+
+                direction = img.GetDirection()
+                slice_thickness = str(img.GetSpacing()[2])
+
+                series_tag_values = [(k, reader.GetMetaData(0, k)) for k in tags_to_copy if
+                                     reader.HasMetaDataKey(0, k)] + \
+                                    [("0008|0031", modification_time),  # Series Time
+                                     ("0008|0021", modification_date),  # Series Date
+                                     ("0020|0037", '\\'.join(map(str, (
+                                     direction[0], direction[3], direction[6],  # Image Orientation (Patient)
+                                     direction[1], direction[4], direction[7])))),
+                                     ("0008|103e", series_description),  # Series Description
+                                     ('0020|0011', str(series_number)),  # Series Number
+                                     ("0008|0008", "DERIVED\\SECONDARY"),  # Image Type
+                                     ("0018|0050", slice_thickness),  # Slice Thickness
+                                     ("0018|0088", slice_thickness),  # Spacing Between Slices
+                                     ("0020|000e", pydicom.uid.generate_uid(prefix=self.uid_prefix))
+                                     # Series Instance UID
+                                     ]
+                for i in range(img.GetDepth()):
+                    image_slice = img[:, :, i]
+                    # Tags shared by the series.
+                    for tag, value in series_tag_values:
+                        # print(tag)
+                        image_slice.SetMetaData(tag, value)
+
+                    j = img.GetDepth() - i
+                    # Slice specific tags.
+                    image_slice.SetMetaData("0008|0012", time.strftime("%Y%m%d"))  # Instance Creation Date
+                    image_slice.SetMetaData("0008|0013", time.strftime("%H%M%S"))  # Instance Creation Time
+                    image_slice.SetMetaData("0020|0032", '\\'.join(
+                        map(str, img.TransformIndexToPhysicalPoint((0, 0, i)))))  # Image Position (Patient)
+                    image_slice.SetMetaData("0020|0013", str(j))  # Instance Number
+                    image_slice.SetMetaData("0008|0018", pydicom.uid.generate_uid(prefix=self.uid_prefix))
+
+                    # Write to the output directory and add the extension dcm, to force writing in DICOM format.
+
+                    writer.SetFileName(os.path.join('temp/dicoms_new', series_description, str(j) + '.dcm'))
+                    writer.Execute(image_slice)
+            print('"' + series_description + '"', 'image volume saved')
+        shutil.rmtree('temp/dicoms', ignore_errors=True)
+        os.rename('temp/dicoms_new', 'temp/dicoms')
+
     def generate(self):
         self.correct_slice_order()
-        self.correct_inplane_resolution()
+        self.check_inplane_resolution()
         self.match_slice_locations()
         self.check_slice_contiguity()
         self.check_fov()
@@ -198,6 +368,14 @@ class SliceMatchedVolumes:
             self.is_clean = True
             self.rewrite_uids()
             self.edit_dicom()
+
+        elif ((self.num_inplane_dim_mismatch > 0 or self.num_fov > 1 or not self.slice_matched)
+              and self.num_non_contiguous == 0):
+            self.load_sitk_image_volumes()
+            self.reformat_to_axial()
+            self.resample_volumes()
+            self.write_sitk_image_volumes()
+            self.is_clean = True
 
         self.df.to_csv('df.csv')
 
