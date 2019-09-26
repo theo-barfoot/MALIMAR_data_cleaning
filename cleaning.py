@@ -141,7 +141,7 @@ class SliceMatchedVolumes:
                 if any(elem > st for elem in vals):
                     num = diff[diff > st].count()
                     print(idx, 'has', num, 'underlapping slices',
-                          'largest gap is', diff.max() + 'mm')
+                          'largest gap is {}mm'.format(diff.max()))
 
     def check_fov(self):
         print('-- Checking FOVs between all series --')

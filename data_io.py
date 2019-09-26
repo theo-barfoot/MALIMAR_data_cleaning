@@ -8,9 +8,7 @@ import shutil
 # from io import BytesIO
 import requests
 import pandas as pd
-import time
-
-#  import SimpleITK as sitk
+import pydicom
 
 
 class MalimarSeries:
@@ -92,7 +90,8 @@ class MalimarSeries:
 
     def __check_complete(self):
         # complete = ((1, 1, 1, 1), (1, 0, 1, 1, 0))  # Avanto complete
-        complete = ((0, 0, 1, 1), (1, 0, 1, 1, 0))  # Avanto cor only fat water dixon
+        # complete = ((0, 0, 1, 1), (1, 0, 1, 1, 0))  # Avanto cor only fat water dixon
+        complete = ((1, 1, 1, 1), (0, 0, 0, 1, 1))  # Aera
         # TODO: Be useful to print which series are missing
         a = []
         for sequence, comp in zip(self.xnat_paths_dict, complete):
@@ -122,9 +121,26 @@ class MalimarSeries:
                     print('Downloading: ', series)
                     item.download_dir(path, verbose=False)
                     self.local_paths_dict[sequence][series] = path
+        self.unpack_bvals()
 
     def unpack_bvals(self):
-        pass
+        b_path = self.local_paths_dict['diffusion']['bvals']
+        series_names = ('b50', 'b600', 'b900')
+        if b_path:
+            print('--- Un-packing b values into seperate DICOM series ---')
+            dcm_folder_path = os.path.split(b_path)[0]
+            for dirName, subdirList, fileList in os.walk(b_path):
+                for filename in fileList:
+                    if ".dcm" in filename.lower():
+                        dcm_path = os.path.join(dirName, filename)
+                        dcm = pydicom.dcmread(dcm_path, stop_before_pixels=True)
+                        for name in series_names:
+                            if name in dcm.SequenceName:
+                                if not os.path.exists(os.path.join(dcm_folder_path, name)):
+                                    os.makedirs(os.path.join(dcm_folder_path, name))
+                                    self.local_paths_dict['diffusion'][name] = os.path.join(dcm_folder_path, name)
+                                os.rename(dcm_path, os.path.join(dcm_folder_path, name, filename))
+            shutil.rmtree(b_path, ignore_errors=True)
 
     def clean(self):
         print('---- Cleaning DICOM Series ----')
