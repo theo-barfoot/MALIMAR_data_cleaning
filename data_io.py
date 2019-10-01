@@ -89,25 +89,30 @@ class MalimarSeries:
                 print(e)
 
     def __check_complete(self):
-        # complete = ((1, 1, 1, 1), (1, 0, 1, 1, 0))  # Avanto complete
-        # complete = ((0, 0, 1, 1), (1, 0, 1, 1, 0))  # Avanto cor only fat water dixon
-        complete = ((1, 1, 1, 1), (0, 0, 0, 1, 1))  # Aera
+        completes = [((1, 1, 1, 1), (1, 0, 1, 1, 0)),  # Avanto complete
+                     ((0, 0, 1, 1), (1, 0, 1, 1, 0)),  # Avanto cor only fat water dixon
+                     ((1, 1, 1, 1), (0, 0, 0, 1, 1)),  # Aera
+                     ((1, 1, 1, 1), (1, 0, 1, 1, 0))]  # Aera 2
         # TODO: Be useful to print which series are missing
-        a = []
-        for sequence, comp in zip(self.xnat_paths_dict, complete):
-            for series, c in zip(self.xnat_paths_dict[sequence], comp):
-                if c:  # if the series is required
-                    a.append(len(self.xnat_paths_dict[sequence][series]) - c)
-        self.complete = min(a) > -1
-        if self.complete:
-            print('All required series found!')
-        else:
-            print('ERROR: Unable to locate all required series')
+        for complete in completes:
+            a = []
+            for sequence, comp in zip(self.xnat_paths_dict, complete):
+                for series, c in zip(self.xnat_paths_dict[sequence], comp):
+                    if c:  # if the series is required
+                        a.append(len(self.xnat_paths_dict[sequence][series]) - c)
+            self.complete = min(a) > -1
+            if self.complete:
+                print('All required series found!')
+                self.duplicates = max(a) > 0
+                if self.duplicates:
+                    print('WARNING: Multiple series of same type found!')
+                return self
+            else:
+                continue
 
-        self.duplicates = max(a) > 0
-        if self.duplicates:
-            print('WARNING: Multiple series of same type found!')
-        return self
+        if not self.complete:
+            print('ERROR: Unable to locate all required series')
+            return self
 
     def download_series(self):
         print('-- Downloading DICOM Series --')
@@ -141,6 +146,7 @@ class MalimarSeries:
                                     self.local_paths_dict['diffusion'][name] = os.path.join(dcm_folder_path, name)
                                 os.rename(dcm_path, os.path.join(dcm_folder_path, name, filename))
             shutil.rmtree(b_path, ignore_errors=True)
+            del(self.local_paths_dict['diffusion']['bvals'])
 
     def clean(self):
         print('---- Cleaning DICOM Series ----')

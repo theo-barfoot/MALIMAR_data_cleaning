@@ -76,8 +76,8 @@ class SliceMatchedVolumes:
                 print(idx, 'Slice order correct')
             else:
                 print('Correcting', idx, 'slice order')
-                self.df.loc[idx, 'InstanceNumber'] = range(1, len(df_select) + 1)
                 self.num_slice_order_corrected += 1
+            self.df.loc[idx, 'InstanceNumber'] = range(1, len(df_select) + 1)
 
         self.df.reset_index(inplace=True)
         self.df.drop('Slice', axis=1, inplace=True)
@@ -353,12 +353,156 @@ class SliceMatchedVolumes:
 
                     writer.SetFileName(os.path.join('temp/dicoms_new', series_description, str(j) + '.dcm'))
                     writer.Execute(image_slice)
-            print('"' + series_description + '"', 'image volume saved')
+                print('"' + series_description + '"', 'image volume saved')
         shutil.rmtree('temp/dicoms', ignore_errors=True)
         os.rename('temp/dicoms_new', 'temp/dicoms')
 
+    def correct_slice_contiguity(self):
+        print('--- Correcting Slice Contiguity ---')
+        # st = 5  # NOT TRUE for soem old area diffusions
+        # This code has become a real mess and needs reworking....
+
+        for idx, df_select in self.df.groupby(['Sequence', 'Series']):
+            self.df.loc[idx, 'diff_down'] = df_select['SliceLocation'].diff().abs().round(2)
+            print(idx, ' - Removed', len(self.df.loc[idx][self.df.loc[idx, 'diff_down'] == 0]), 'duplicates')
+        self.df = self.df[self.df['diff_down'] != 0]  # drop duplicate rows
+
+        for idx, df_select in self.df.groupby(['Sequence', 'Series']):
+            self.df.loc[idx, 'diff_up'] = df_select['SliceLocation'].diff(-1).abs().round(2)
+
+        # Calculate largest contiguous group and determine new slice locations:
+
+        for idx, d in self.df.groupby(['Sequence', 'Series']):
+            st = self.df.loc[idx + (1,), 'SliceThickness']
+            print(idx, 'Loading Pixel Array Data')
+            self.df.loc[idx, 'PixelArray'] = d.Path.apply(lambda x: pydicom.dcmread(x).pixel_array)
+
+            diff = d['SliceLocation'].diff().round(2).abs()
+            diff.dropna(inplace=True)
+            vals = diff.unique()  # copied from above as it just works -- but is the same as using ['diff_down']
+
+            if not all(elem == st for elem in vals):
+                # first non-contiguous slice at beginning of largest contiguous group
+                d['diff_up'].to_csv('test.csv')
+                if d[d['diff_down'] != st]['diff_down'].count() == 1:
+                    sl_ref = np.arange(self.df.loc[idx, 'SliceLocation'].max(),
+                                       self.df.loc[idx, 'SliceLocation'].min(), -st)
+                else:
+                    start = d[d['diff_up'] != st].dropna()['InstanceNumber'].diff(-1).idxmin()[2]
+                    # first non-contiguous slice at end of largest contiguous group
+                    end = d[d['diff_down'] != st].dropna()['InstanceNumber'].diff().idxmax()[2]
+                    for i in range(start + 1, end):
+                        self.df.loc[idx + (i,), 'Contiguous'] = 'yes'
+                    # df.loc[idx + (range(start+1, end),), 'Contiguous'] = 'yes' -- NO IDEA WHY THIS DOESN'T WORK
+                    sl_ref_up = np.arange(self.df.loc[idx + (start + 1,)].SliceLocation + st,
+                                          self.df.loc[idx, 'SliceLocation'].max(), st)  # new slice locations
+                    sl_ref_down = np.arange(self.df.loc[idx + (end - 1,)].SliceLocation - st,
+                                            self.df.loc[idx, 'SliceLocation'].min(), -st)  # new slice locations
+                    sl_ref = np.concatenate((sl_ref_down, sl_ref_up))
+
+                s_template = pd.DataFrame.copy(self.df.loc[idx + (1,)])
+                shape = self.df.loc[idx + (1,), 'PixelArray'].shape
+                s_template.PixelArray = np.ones(shape) * -1  # array is initialised with -1's
+                s_template.Path = 'no path'
+                print(idx, 'Calculating New Slice Locations')
+                for i, sl in enumerate(sl_ref):
+                    s_new = pd.DataFrame.copy(s_template)
+                    s_new.SliceLocation = sl
+                    try:
+                        ipp_new = ast.literal_eval(s_new.ImagePositionPatient)
+                    except ValueError:
+                        ipp_new = s_new.ImagePositionPatient
+                    ipp_new[2] = sl
+                    s_new.ImagePositionPatient = ipp_new
+                    s_new.Contiguous = 'yes'
+                    self.df.loc[idx + (i + len(d) + 50,)] = s_new
+                    # was having issues with slice overwriting so I just made the index gap big (50)
+            elif all(elem == st for elem in vals):
+                self.df.loc[idx, 'Contiguous'] = 'yes'
+
+        self.correct_slice_order()
+
+        for idx, d in self.df.groupby(['Sequence', 'Series']):
+            # st = self.df.loc[idx + (1,), 'SliceThickness']
+            if not all(c == 'yes' for c in self.df.loc[idx, 'Contiguous']):
+                print(idx, 'Interpolating new slices')
+                shape = self.df.loc[idx + (1,), 'PixelArray'].shape
+                for i in range(1, len(self.df.loc[idx])):
+                    if np.all(self.df.loc[idx + (i,), 'PixelArray'] == -1):
+                        i_prev = i - 1
+                        i_next = i + 1
+                        while np.all(self.df.loc[idx + (i_prev,), 'PixelArray'] == -1): i_prev -= 1
+                        while np.all(self.df.loc[idx + (i_next,), 'PixelArray'] == -1): i_next += 1
+                        # Slice Locations:
+                        sl_prev = self.df.loc[idx + (i_prev,), 'SliceLocation']
+                        sl = self.df.loc[idx + (i,), 'SliceLocation']
+                        sl_next = self.df.loc[idx + (i_next,), 'SliceLocation']
+                        # Pixel Arrays:
+                        pa_prev = self.df.loc[idx + (i_prev,), 'PixelArray'].reshape(shape)
+                        pa_next = self.df.loc[idx + (i_next,), 'PixelArray'].reshape(shape)
+                        # for some bizarre reason the calculated 2d array is 1d (flat) in the df
+                        x1 = abs(sl - sl_prev)
+                        x2 = abs(sl_next - sl)
+                        r1 = (x1 / (x1 + x2))
+                        r2 = (x2 / (x1 + x2))
+                        pa_new = r1 * pa_prev + r2 * pa_next
+                        self.df.loc[idx + (i,), 'PixelArray'] = pa_new
+
+        self.df = self.df[self.df['Contiguous'] == 'yes']
+        self.correct_slice_order()
+        self.df.dropna(subset=['PixelArray'], inplace=True)  # this should not be required.... something wrong
+        # also not sure what effect this will have on series which don't have contiguity issues
+        # could either fix this or just re-create the dicom dataframe
+
+    def df_to_sitk_image_volumes(self):
+        print('--- Loading Image Volumes in SimpleITK ---')
+        # st = 5
+        for g, group in enumerate(self.series_descriptions):
+            self.image_volumes.append([])
+            self.readers.append([])
+            for s, series in enumerate(group):
+                idx = self.group_descriptions[g], series
+                st = self.df.loc[idx].iloc[0]['SliceThickness']
+                print('"' + self.series_descriptions[g][s] + '"', 'image volume loaded')
+                shape = self.df.loc[self.group_descriptions[g], series, 1][['Rows', 'Columns']].to_list()
+                shape = list(map(int, shape))
+                volume = self.df.loc[self.group_descriptions[g], series]['PixelArray'].values
+                volume = np.array([array.reshape(shape) for array in volume])
+                volume = np.flip(volume, 0)
+                volume = volume.astype(np.int16)
+                img = sitk.GetImageFromArray(volume)
+                try:
+                    PixelSpacing = ast.literal_eval(self.df.loc[self.group_descriptions[g], series, 1]['PixelSpacing'])
+                except ValueError:
+                    PixelSpacing = self.df.loc[self.group_descriptions[g], series, 1]['PixelSpacing']
+                PixelSpacing.append(st)
+                img.SetSpacing(PixelSpacing)
+                try:
+                    Origin = ast.literal_eval(self.df.loc[self.group_descriptions[g], series].iloc[-1]['ImagePositionPatient'])
+                except ValueError:
+                    Origin = self.df.loc[self.group_descriptions[g], series].iloc[-1]['ImagePositionPatient']
+                img.SetOrigin(Origin)
+                self.image_volumes[g].append(img)
+
+                a = []
+                path = self.paths[g][s]
+                for dirName, subdirList, fileList in os.walk(path):
+                    for filename in fileList:
+                        if ".dcm" in filename.lower():
+                            a.append(os.path.join(dirName, filename))
+                            template_dcm_paths = a[:2]
+
+                # template_dcm_paths = list(self.df.loc[idx][self.df.loc[idx, 'Path'] != 'no path'].iloc[:2].Path)
+                reader = sitk.ImageSeriesReader()
+                reader.SetFileNames(list(template_dcm_paths))
+                reader.MetaDataDictionaryArrayUpdateOn()
+                reader.LoadPrivateTagsOn()
+                _ = reader.Execute()
+                self.readers[g].append(reader)
+
     def generate(self):
         self.correct_slice_order()
+        self.df.to_csv('df.csv')
         self.check_inplane_resolution()
         self.match_slice_locations()
         self.check_slice_contiguity()
@@ -377,7 +521,14 @@ class SliceMatchedVolumes:
             self.write_sitk_image_volumes()
             self.is_clean = True
 
-        self.df.to_csv('df.csv')
+        elif self.num_non_contiguous > 0:
+            self.correct_slice_contiguity()
+            self.df_to_sitk_image_volumes()
+            self.resample_volumes()
+            self.write_sitk_image_volumes()
+            self.is_clean = True
+
+
 
 # probably going to be best to write this so that it checks if the volume is clean and if not then you call
 # the cleaning function, rather than having the two together

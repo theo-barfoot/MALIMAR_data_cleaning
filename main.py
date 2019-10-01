@@ -76,12 +76,8 @@ with xnat.connect(server=anon) as connection_down:
             missing.to_excel('phase1_missing_mrsession.xlsx', index=False)
             transfer_list.to_excel('phase1_transfer.xlsx', index=False)
 
-        # TODO: What is match_slice_location actually doing?
-        # TODO: Need XNAT_ICR to fix OHIF + ROIUploader -- might give up on this and just upload as resource
-        # TODO: Unpack Aera b-values
-        # TODO: inplane resolution correction
-        # TODO: Slice resampling
-        # TODO: figure out coronal data.....
+        # TODO: How to deal with b-vals and b50 600 900 , which one to choose?
+        # TODO: look at errors
         # TODO: how to deal with non ['1', '0', '0', '0', '1', '0'] data
         # TODO: In cleaning change 'Sequence' to 'Group' -- OR remove group descriptions and just index based on dummy group name
         # TODO: allow series/group descriptions + series number to be left empty and write init function to make default ones
