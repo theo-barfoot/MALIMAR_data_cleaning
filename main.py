@@ -77,6 +77,9 @@ with xnat.connect(server=anon) as connection_down:
             transfer_list.to_excel('phase1_transfer.xlsx', index=False)
 
         # TODO: How to deal with b-vals and b50 600 900 , which one to choose?
+        # TODO: Worth coding for slices from different sequence in series? - or is it too rare?
+        # quite simple: just choose the unpacked values and delete the b-val one, best to
+        # implememt this in the download section so you never download the b-vals
         # TODO: look at errors
         # TODO: how to deal with non ['1', '0', '0', '0', '1', '0'] data
         # TODO: In cleaning change 'Sequence' to 'Group' -- OR remove group descriptions and just index based on dummy group name

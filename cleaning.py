@@ -18,11 +18,12 @@ class SliceMatchedVolumes:
         self.series_numbers = series_numbers
         self.uid_prefix = uid_prefix
 
-        self.fields = ['InstanceNumber', 'SliceLocation', 'SliceThickness', 'Rows', 'Columns',
+        self.fields = ['SequenceName', 'InstanceNumber', 'SliceLocation', 'SliceThickness', 'Rows', 'Columns',
                        'PixelSpacing', 'ImagePositionPatient', 'SeriesInstanceUID', 'SOPInstanceUID']
 
         self.df = pd.DataFrame()
         self.build_dcm_data_frames()
+        self.df.to_csv('df.csv')
         self.num_slice_order_corrected = 0
         self.num_inplane_dim_mismatch = 0
         self.num_non_contiguous = 0
@@ -66,6 +67,16 @@ class SliceMatchedVolumes:
         self.df.rename_axis(index={'InstanceNumber': 'Slice'}, inplace=True)
 
         self.df.sort_index(inplace=True)  # to prevent 'indexing past lexsort depth' warning
+
+        for idx, d in self.df.groupby(['Sequence', 'Series']):
+            if d.SequenceName.nunique() != 1:
+                print('Series containing multiple sequences found in: ', idx)
+                seq = d.SequenceName.value_counts().idxmax()
+                for i, row in self.df.loc[idx].iterrows():
+                    if row['SequenceName'] != seq:
+                        self.df.drop(idx + (i,), inplace=True)
+                        print(row['SequenceName'], ' removed!')
+
         print('Dataframe of DICOM headers constructed')
 
     def correct_slice_order(self):
