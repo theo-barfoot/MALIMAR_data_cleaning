@@ -189,7 +189,8 @@ class MalimarSeries:
                     filename = series
                     print('Converting', sequence, '-', filename+'.dcm', 'to', filename + '.nii.gz')
                     try:
-                        dicom2nifti.convert_dicom.dicom_series_to_nifti(path, 'temp/nifti/'+filename+'.nii.gz')
+                        dicom2nifti.convert_dicom.dicom_series_to_nifti(path, 'temp/nifti/'+filename+'.nii.gz',
+                                                                        reorient_nifti=False)
                     except Exception as e:
                         print(e)
 
@@ -249,6 +250,9 @@ class MalimarSeries:
                 self.mr_session_up.fields[var] = val
 
         self.mr_session_up.set('Age', row.Age)
+        self.mr_session_up.fields['roi_done_theo'] = 'No'
+        self.mr_session_up.fields['roi_done_maira'] = 'No'
+        self.mr_session_up.fields['roi_signed_off_andrea'] = 'No'
 
         # need to write method to upload crf, see phone camera for placement
 

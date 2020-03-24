@@ -74,6 +74,7 @@ class SliceMatchedVolumes:
                 seq = d.SequenceName.value_counts().idxmax()
                 for i, row in self.df.loc[idx].iterrows():
                     if row['SequenceName'] != seq:
+                        os.remove(row['Path'])
                         self.df.drop(idx + (i,), inplace=True)
                         print(row['SequenceName'], ' removed!')
 
@@ -511,7 +512,7 @@ class SliceMatchedVolumes:
                 _ = reader.Execute()
                 self.readers[g].append(reader)
 
-    def generate(self):
+    def generate(self):  # todo: change this to a magic __call__ function
         self.correct_slice_order()
         self.df.to_csv('df.csv')
         self.check_inplane_resolution()
@@ -538,6 +539,8 @@ class SliceMatchedVolumes:
             self.resample_volumes()
             self.write_sitk_image_volumes()
             self.is_clean = True
+
+        # TODO: Need to reformat to axial for non contiguous volumes before correcting contiguity
 
 
 

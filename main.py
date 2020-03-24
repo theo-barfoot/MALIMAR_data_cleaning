@@ -76,6 +76,8 @@ with xnat.connect(server=anon) as connection_down:
             missing.to_excel('phase1_missing_mrsession.xlsx', index=False)
             transfer_list.to_excel('phase1_transfer.xlsx', index=False)
 
+        # todo: compy the object orientation of the aera-wb project, create class of vol then child called dw or dx vol
+        # todo: SequenceName is mising from cleaned DICOMS.....
         # TODO: How to deal with b-vals and b50 600 900 , which one to choose?
         # TODO: Worth coding for slices from different sequence in series? - or is it too rare?
         # quite simple: just choose the unpacked values and delete the b-val one, best to
