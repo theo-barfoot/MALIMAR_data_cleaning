@@ -100,19 +100,34 @@ class MalimarSeries:
                 for series, c in zip(self.xnat_paths_dict[sequence], comp):
                     if c:  # if the series is required
                         a.append(len(self.xnat_paths_dict[sequence][series]) - c)
+
+            if len(self.xnat_paths_dict['diffusion']['bvals']) and len(self.xnat_paths_dict['diffusion']['b900']):
+                print('Combined b-vals and unpacked DWI series found, removing unpacked series')
+                self.xnat_paths_dict['diffusion']['b50'] = []
+                self.xnat_paths_dict['diffusion']['b600'] = []
+                self.xnat_paths_dict['diffusion']['b900'] = []
+
             self.complete = min(a) > -1
             if self.complete:
                 print('All required series found!')
                 self.duplicates = max(a) > 0
                 if self.duplicates:
                     print('WARNING: Multiple series of same type found!')
-                return self
-            else:
-                continue
+                    for sequence in self.xnat_paths_dict:
+                        for series in self.xnat_paths_dict[sequence]:
+                            if len(self.xnat_paths_dict[sequence][series]) > 1:
+                                print('Please enter of index (0, 1, 2) of required series:')
+                                print(self.xnat_paths_dict[sequence][series])
+                                required_idx = int(input())
+                                self.xnat_paths_dict[sequence][series] = \
+                                    [self.xnat_paths_dict[sequence][series][required_idx]]
+                    self.duplicates = False
+                    break
+                else:
+                    break
 
         if not self.complete:
             print('ERROR: Unable to locate all required series')
-            return self
 
     def download_series(self):
         print('-- Downloading DICOM Series --')
