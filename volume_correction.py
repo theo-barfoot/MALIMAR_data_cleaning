@@ -155,6 +155,10 @@ class VolumeCollection:
         else:
             print('All volumes in volume collection have same sampling')
 
+    def resample_slices_to_common_origin(self):
+        for volume in self.volumes.values():
+            volume.resample_slices_to_common_origin()
+
     def info(self):
         for volume in self.volumes.values():
             volume.info()
@@ -349,6 +353,9 @@ class Volume:
 
     def compile_volume_from_slices(self):
         # todo: add warning if slice interval is non constant - can still compile though
+        if len(Counter(s.image.GetOrigin() for s in self.slices)) > 1:
+            self.resample_slices_to_common_origin()
+
         images = [s.image for s in self.slices]
         images.reverse()  # otherwise nifti volumes come out upside down in ITK-SNAP todo: need to look into this
         origin = self.slices[-1].slice_location
@@ -415,6 +422,20 @@ class Volume:
         # todo: is it necessary to do both of these?
         for s in self.slices:
             s.registration = SliceTranslation(parent_slice=s)
+
+    def resample_slices_to_common_origin(self):
+        origin_counts = Counter(s.image.GetOrigin() for s in self.slices)
+        most_common_origin = origin_counts.most_common(1)[0][0]
+
+        ref_image = next((s.image for s in self.slices if s.image.GetOrigin() == most_common_origin), None)
+
+        for s in self.slices:
+            resampling_filter = sitk.ResampleImageFilter()
+            resampling_filter.SetInterpolator(sitk.sitkLinear)
+            resampling_filter.SetDefaultPixelValue(0)
+            resampling_filter.SetReferenceImage(ref_image)
+            resampling_filter.SetTransform(sitk.Transform())
+            s.image = resampling_filter.Execute(s.image)
 
 
 class Slice:
