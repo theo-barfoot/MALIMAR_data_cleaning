@@ -113,8 +113,9 @@ class SliceTranslation:
 
     @fixed.setter
     def fixed(self, f):
-        if f.slice_location != self._moving.slice_location:
-            raise ValueError("Slices are not in the same z location")
+        if round(f.slice_location, 2) != round(self._moving.slice_location, 2):
+            raise ValueError(f"Slices are not in the same z location, fixed = {f.slice_location}, "
+                             f"moving = {self._moving.slice_location}")
         self._fixed = f
 
     def calculate_transformation(self, log=False):

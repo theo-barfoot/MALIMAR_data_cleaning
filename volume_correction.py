@@ -14,7 +14,7 @@ from termcolor import colored
 from matplotlib.collections import PatchCollection
 from matplotlib.patches import Rectangle
 from registration_tools import VolumeSliceTranslation, SliceTranslation
-from identify_dicom import get_name
+from identify_dicom import DICOMName
 from dicom_writer import write_dcm_series
 
 
@@ -56,9 +56,10 @@ class VolumeCollection:
             for path in self.walk_directory(self.path):
                 try:
                     dcm_header = pydicom.dcmread(path, stop_before_pixels=True)
-                    volume_name = get_name(dcm_header)
+                    name = DICOMName(dcm_header)
 
-                    if volume_name:
+                    if name:
+                        volume_name = name.series
                         if volume_name not in self.volumes.keys():
                             self.volumes.update({volume_name: Volume(self, volume_name, dcm_header)})
 

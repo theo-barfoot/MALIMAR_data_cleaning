@@ -1,40 +1,52 @@
-def get_name(dcm_header):
-    try:
-        if 'ep_b' in dcm_header.SequenceName:
-            name = identify_dwi(dcm_header)
-        elif 'fl3d2' in dcm_header.SequenceName:
-            name = identify_dix(dcm_header)
-        else:
-            name = None
-        return name
+class DICOMName:
+    def __init__(self, dcm_header):
+        self.sequence = None
+        self.series = None
+        self.get_name(dcm_header)
 
-    except AttributeError:
-        pass
-
-
-def identify_dwi(dcm_header):
-    """Inspect each DICOM header and return diffusion volume label"""
-    if 'TRACEW' in dcm_header[0x08, 0x08].value:
+    def get_name(self, dcm_header):
         try:
-            b_val = str(int(dcm_header[0x19, 0x100c].value))  # RMH Aera
-        except KeyError:
-            b_val = str(int(dcm_header.MRDiffusionSequence[0][0x18, 0x9087].value))  # ICH Aera
-        return 'b' + str(b_val)
-    elif 'ADC' in dcm_header[0x08, 0x08].value:
-        return 'adc'
-    else:
-        raise ValueError("Unknown DWI image!")  # todo: should this be NameError?
+            if 'ep_b' in dcm_header.SequenceName:
+                self.sequence = 'dwi'
+                if 'TRACEW' in dcm_header[0x08, 0x08].value:
+                    try:
+                        b_val = str(int(dcm_header[0x19, 0x100c].value))  # RMH Aera
+                    except KeyError:
+                        b_val = str(int(dcm_header.MRDiffusionSequence[0][0x18, 0x9087].value))  # ICH Aera
+                    self.series = 'b' + str(b_val)
+                elif 'ADC' in dcm_header[0x08, 0x08].value:
+                    self.series = 'adc'
+                else:
+                    raise ValueError("Unknown DWI image!")  # todo: should this be NameError?
+
+            elif 'fl3d2' in dcm_header.SequenceName:
+                if ('ADD' or 'DIV') not in dcm_header.ImageType:  # todo: need to make sure this doesn't cause issue
+                    if 'IN_PHASE' in dcm_header.ImageType:
+                        self.sequence = 'dix'
+                        self.series = 'in'
+                    elif ('WATER' in dcm_header.ImageType) or (
+                            dcm_header.ScanOptions and dcm_header.ScanOptions == 'DIXW'):
+                        self.sequence = 'dix'
+                        self.series = 'water'
+                    elif ('FAT' in dcm_header.ImageType) or (
+                            dcm_header.ScanOptions and dcm_header.ScanOptions == 'DIXF'):
+                        self.sequence = 'dix'
+                        self.series = 'fat'
+                    elif 'OUT_PHASE' in dcm_header.ImageType:  # or (('ADD' or 'DIV') not in dcm_header.ImageType):
+                        self.sequence = 'dix'
+                        self.series = 'out'
+                    else:
+                        raise ValueError("Unknown ")
+        except AttributeError:
+            pass
+
+    def __str__(self):
+        return f'Sequence: {self.sequence}, Series: {self.series}'
+
+    def __bool__(self):
+        return bool(self.sequence and self.series)
 
 
-def identify_dix(header):
-    """Inspect each DICOM header and return DIXON series label, ie. in/out/fat/water"""
-    if ('IN_PHASE' in header.ImageType):
-        return 'in'
-    elif ('WATER' in header.ImageType) or (header.ScanOptions and header.ScanOptions == 'DIXW'):
-        return 'water'
-    elif ('FAT' in header.ImageType) or (header.ScanOptions and header.ScanOptions == 'DIXF'):
-        return 'fat'
-    elif ('OUT_PHASE' in header.ImageType) or (('ADD' or 'DIV') not in header.ImageType):
-        return 'out'
-    else:
-        raise ValueError("Unknown ")
+
+
+

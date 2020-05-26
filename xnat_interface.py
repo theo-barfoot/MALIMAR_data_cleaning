@@ -1,4 +1,50 @@
 import xnat
+from identify_dicom import DICOMName
+import os
+import time
+
+
+class XNATDownloader:
+    def __init__(self, project, mr_id, composed=False):
+        self.project = project
+        self.connection = project.xnat_session
+        self.mr_session = project.experiments[mr_id]
+        self.composed = composed
+        self.dix = []
+        self.dwi = []
+
+    def identify_scans(self):
+
+        def scan_is_composed(dcm_header, frames):
+            return ('COMPOSED' in dcm_header.ImageType) or (frames > 120)
+
+        for scan in self.mr_session.scans.values():
+            volume_name = None
+            try:
+                dcm_header = scan.read_dicom()
+                if (self.composed and scan_is_composed(dcm_header, scan.frames)) or \
+                        (not self.composed and not scan_is_composed(dcm_header, scan.frames)):
+                    volume_name = DICOMName(dcm_header)
+            except ValueError:
+                pass
+
+            if volume_name:
+                print(scan, volume_name)
+                if volume_name.sequence == 'dix':
+                    self.dix.append(scan)
+                elif volume_name.sequence == 'dwi':
+                    self.dwi.append(scan)
+
+    def download_scans(self):
+        os.mkdir('input')
+        for scan in self.dix:
+            print(scan)
+            time.sleep(.3)
+            scan.download_dir('input/dix')
+        for scan in self.dwi:
+            print(scan)
+            time.sleep(.3)
+            scan.download_dir('input/dwi')
 
 
 class XNATUploader:
