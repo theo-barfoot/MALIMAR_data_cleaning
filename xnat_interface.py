@@ -5,10 +5,12 @@ import time
 
 
 class XNATDownloader:
-    def __init__(self, project, mr_id, composed=False):
+    def __init__(self, project, mr_id, composed=False, path=None):
         self.project = project
         self.connection = project.xnat_session
+        self.mr_id = mr_id
         self.mr_session = project.experiments[mr_id]
+        self.path = path if path else mr_id
         self.composed = composed
         self.dix = []
         self.dwi = []
@@ -36,26 +38,30 @@ class XNATDownloader:
                     self.dwi.append(scan)
 
     def download_scans(self):
-        os.mkdir('input')
+        os.mkdir(self.path)
+        download_folder = os.path.join(self.path, 'input')
+        os.mkdir(download_folder)
         for scan in self.dix:
             print(scan)
             time.sleep(.3)
-            scan.download_dir('input/dix')
+            scan.download_dir(os.path.join(download_folder, 'dix'))
         for scan in self.dwi:
             print(scan)
             time.sleep(.3)
-            scan.download_dir('input/dwi')
+            scan.download_dir(os.path.join(download_folder, 'dwi'))
 
 
 class XNATUploader:
-    def __init__(self, project):
+    def __init__(self, project, path):
         self.project = project
+        self.path = path
         self.connection = project.xnat_session
         self.mr_session = None
 
     def upload_dicom(self):
         print(f'Uploading DICOMs to {self.connection._original_uri}')
-        pre = self.connection.services.import_('output/dicom.zip', project=self.project.id, destination='/prearchive')
+        pre = self.connection.services.import_(os.path.join(self.path, 'output/dicom.zip'),
+                                               project=self.project.id, destination='/prearchive')
         print('Archiving MrSessionData')
         self.mr_session = pre.archive()
         print(self.mr_session.label, 'successfully archived')
@@ -78,7 +84,8 @@ class XNATUploader:
         for i, scan in scans.items():
             a = scan.create_resource(label='NIFTI', format='NIFTI')
             print('Uploading', scan.series_description + '.nii.gz')
-            scan.resources['NIFTI'].upload('output/nifti/' + scan.series_description + '.nii.gz', scan.series_description + '.nii.gz')
+            scan.resources['NIFTI'].upload(os.path.join(self.path, 'output/nifti/') + scan.series_description + '.nii.gz',
+                                           scan.series_description + '.nii.gz')
 
     def upload_session_vars(self, **session_vars):
         print('-- Uploading Session Variables --')
@@ -101,4 +108,4 @@ class XNATUploader:
         self.connection.put(uri)
         self.mr_session.clearcache()
         path = 'cleaning_notebook.html'
-        self.mr_session.resources['cleaning_report'].upload(data=path, remotepath=path)
+        self.mr_session.resources['cleaning_report'].upload(data=os.path.join(self.path, path), remotepath=path)

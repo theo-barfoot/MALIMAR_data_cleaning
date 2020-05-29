@@ -20,8 +20,8 @@ from dicom_writer import write_dcm_series
 
 class VolumeCollection:
     def __init__(self, *, path):
-        # todo: if path does not exist then throw error - at the moment it just shows 0 files
         self.path = path
+        self.sup_folder = path.split('/')[0]  # todo: really need to improve how paths set globally with the mr_id
         self.volumes = {}
         self.load_dicom_files()
 
@@ -121,7 +121,8 @@ class VolumeCollection:
     def open_in_itk_snap(self):
         # self.write_to_nifti()
         FNULL = open(os.devnull, 'w')
-        paths = ['output/nifti/' + volume.name + '.nii.gz' for volume in self.volumes.values()]
+        path = os.path.join(self.sup_folder, 'output/nifti/')
+        paths = [path + volume.name + '.nii.gz' for volume in self.volumes.values()]
         _ = subprocess.run(["itksnap", "-g", paths[0], "-o", *paths[1:]],
                                  stdout=FNULL, stderr=subprocess.STDOUT)
 
@@ -372,19 +373,23 @@ class Volume:
         if self.image_volume is None:
             self.compile_volume_from_slices()
 
+        output_folder = os.path.join(self.vol_collection.sup_folder, 'output')
+
         try:
-            os.mkdir('output')
+            os.mkdir(output_folder)
         except FileExistsError:
             pass
 
+        output_folder_nifti = os.path.join(output_folder, 'nifti')
+
         try:
-            os.mkdir('output/nifti')  # todo: want to allow output path to be set globally for niftis
+            os.mkdir(output_folder_nifti)  # todo: want to allow output path to be set globally for niftis
         except FileExistsError:
             pass
 
         writer = sitk.ImageFileWriter()
         writer.SetImageIO('NiftiImageIO')
-        path = 'output/nifti/' + self.name + '.nii.gz'
+        path = os.path.join(output_folder_nifti, self.name) + '.nii.gz'
         writer.SetFileName(path)
         writer.Execute(self.image_volume)
 
@@ -393,11 +398,15 @@ class Volume:
     def open_in_itk_snap(self):
         self.write_to_nifti()
         FNULL = open(os.devnull, 'w')
-        path = 'output/nifti/' + self.name + '.nii.gz'
+
+        output_folder = os.path.join(self.vol_collection.sup_folder, 'output')
+        output_folder_nifti = os.path.join(output_folder, 'nifti')
+
+        path = os.path.join(output_folder_nifti, self.name) + '.nii.gz'
         _ = subprocess.run(["itksnap", "-g", path], stdout=FNULL, stderr=subprocess.STDOUT)
 
     def write_to_dicom(self, **modified_tags):
-        write_dcm_series(self, **modified_tags)
+        write_dcm_series(self, path=self.vol_collection.sup_folder, **modified_tags)
 
     def __len__(self):
         return len(self.slices)

@@ -5,14 +5,17 @@ import pydicom
 import shutil
 
 
-def write_dcm_series(volume, **modified_tags):
+def write_dcm_series(volume, path, **modified_tags):
+
+    output_folder = os.path.join(path, 'output')
     try:
-        os.mkdir('output')
+        os.mkdir(output_folder)
     except FileExistsError:
         pass
 
+    output_folder_dicom = os.path.join(output_folder, 'dicom')
     try:
-        os.mkdir('output/dicom')
+        os.mkdir(output_folder_dicom)
     except FileExistsError:
         pass
 
@@ -23,8 +26,8 @@ def write_dcm_series(volume, **modified_tags):
                           'b50': 5, 'b600': 6, 'b800': 7, 'b900': 7, 'adc': 8}
     series_number = series_number_dict[volume.name]
 
-    shutil.rmtree(os.path.join('output/dicom/', series_description), ignore_errors=True)
-    os.mkdir(os.path.join('output/dicom/', series_description))
+    shutil.rmtree(os.path.join(output_folder_dicom, series_description), ignore_errors=True)
+    os.mkdir(os.path.join(output_folder_dicom, series_description))
 
     writer = sitk.ImageFileWriter()
     writer.KeepOriginalImageUIDOn()
@@ -132,7 +135,7 @@ def write_dcm_series(volume, **modified_tags):
 
         # Write to the output directory and add the extension dcm, to force writing in DICOM format.
 
-        writer.SetFileName(os.path.join('output/dicom/', series_description, str(j) + '.dcm'))
+        writer.SetFileName(os.path.join(output_folder_dicom, series_description, str(j) + '.dcm'))
         writer.Execute(image_slice)
 
     print('"' + series_description + '"', 'image volume saved as DICOM series')

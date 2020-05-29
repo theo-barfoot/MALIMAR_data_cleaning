@@ -53,19 +53,19 @@ def transfer_icht_scan_files(trial_number, directory, composed=False, filt=False
                         if 'dixon' in subdir and 'cor' not in subdir:
                             if 'COMP' in subdir and composed:
                                 shutil.copytree(os.path.join(directory, folder, dirName, subdir),
-                                                os.path.join('input/dix/', subdir))
+                                                os.path.join(trial_number, 'input/dix/', subdir))
                                 num_dix += 1
                             elif 'COMP' not in subdir and not composed:
                                 shutil.copytree(os.path.join(directory, folder, dirName, subdir),
-                                                os.path.join('input/dix/', subdir))
+                                                os.path.join(trial_number, 'input/dix/', subdir))
                                 num_dix += 1
                         elif 'ep2d' in subdir and 'CALC' not in subdir:
                             if 'COMP' in subdir and composed:
                                 shutil.copytree(os.path.join(directory, folder, dirName, subdir),
-                                                os.path.join('input/dwi/', subdir))
+                                                os.path.join(trial_number, 'input/dwi/', subdir))
                                 num_dwi += 1
                             elif 'COMP' not in subdir and not composed:
                                 shutil.copytree(os.path.join(directory, folder, dirName, subdir),
-                                                os.path.join('input/dwi/', subdir))
+                                                os.path.join(trial_number, 'input/dwi/', subdir))
                                 num_dwi += 1
     print(f'{num_dix} DIXON and {num_dwi} diffusion series transferred')
