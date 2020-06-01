@@ -183,7 +183,7 @@ class Volume:
 
     def check_direction(self):
         # todo: this needs to be changed for coronal data and it reformatted to axial
-        if self.dcm_header.ImageOrientationPatient != [1, 0, 0, 0, 1, 0]:
+        if set(abs(i) for i in self.dcm_header.ImageOrientationPatient) != {0, 1}:
             raise ValueError("Non-orthogonal Volume")
 
     def add_slice(self, dcm_path, dcm_header):
