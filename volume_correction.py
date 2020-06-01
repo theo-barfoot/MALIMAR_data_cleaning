@@ -274,6 +274,11 @@ class Volume:
         for i in range(start_idx, end_idx + 1):
             self.slices[i].contiguous = True
 
+        # Find additional contiguous slices away from main block
+        for s in self.slices:
+            if (s.slice_location - self.slices[start_idx].slice_location) % self.slice_thickness == 0:
+                s.contiguous = True
+
         if print_results:
             # todo: if all slices are contiguous then print that:
             start_location = self.slices[start_idx].slice_location
@@ -307,13 +312,16 @@ class Volume:
 
         # instantiate new contiguous slices
         num_new_slices = 0
+        slice_locs = [s.slice_location for s in self.slices]
         for slice_loc in np.arange(start_location + self.slice_thickness, first_slice_location, self.slice_thickness):
-            self.slices.append(Slice(self, dcm_path=None, slice_location=slice_loc, contiguous=True))
-            num_new_slices += 1
+            if slice_loc not in slice_locs:
+                self.slices.append(Slice(self, dcm_path=None, slice_location=slice_loc, contiguous=True))
+                num_new_slices += 1
 
         for slice_loc in np.arange(end_location - self.slice_thickness, last_slice_location, -self.slice_thickness):
-            self.slices.append(Slice(self, dcm_path=None, slice_location=slice_loc, contiguous=True))
-            num_new_slices += 1
+            if slice_loc not in slice_locs:
+                self.slices.append(Slice(self, dcm_path=None, slice_location=slice_loc, contiguous=True))
+                num_new_slices += 1
 
         self.sort_slice_order()
         self.calculate_empty_slices()
