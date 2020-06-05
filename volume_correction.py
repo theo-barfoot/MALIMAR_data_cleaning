@@ -161,6 +161,10 @@ class VolumeCollection:
         for volume in self.volumes.values():
             volume.resample_slices_to_common_origin()
 
+    def reformat_to_axial(self):
+        for volume in self.volumes.values():
+            volume.reformat_to_axial()
+
     def info(self):
         for volume in self.volumes.values():
             volume.info()
@@ -175,6 +179,7 @@ class Volume:
         self.slices_ordered = False
         self.dcm_header = dcm_header
         self.dcm_reader = None
+        self.orientation = None
         self.check_direction()
         self.slice_thickness = float(dcm_header.SliceThickness)
         self.image_volume = None
@@ -183,8 +188,13 @@ class Volume:
 
     def check_direction(self):
         # todo: this needs to be changed for coronal data and it reformatted to axial
-        if set(abs(i) for i in self.dcm_header.ImageOrientationPatient) != {0, 1}:
+        iop = self.dcm_header.ImageOrientationPatient
+        if set(abs(i) for i in iop) != {0, 1}:
             raise ValueError("Non-orthogonal Volume")
+        if iop == [1, 0, 0, 0, 1, 0]:
+            self.orientation = 'tra'
+        elif iop == [1, 0, 0, 0, 0, -1]:
+            self.orientation = 'cor'
 
     def add_slice(self, dcm_path, dcm_header):
         """Add new Slice object to Volume slices list"""
@@ -208,6 +218,7 @@ class Volume:
     def info(self, display_order=False):
         print('-' * 5, self.name, 'volume', '-' * 5)
         print(f'{len(self)} slices')
+        print(f'Orientation: {self.orientation}')
         x = round(self.slices[0].image.GetOrigin()[0], 2)
         y = round(self.slices[0].image.GetOrigin()[1], 2)
         z = round(self.slices[-1].slice_location, 2)  # z-origin used to be defined as slices[0].slice_location
@@ -371,7 +382,11 @@ class Volume:
         origin = self.slices[-1].slice_location
         spacing = self.slice_thickness
         self.image_volume = sitk.JoinSeries(images, origin, spacing)
-        # todo: should origin be first or last slice?
+
+        if self.orientation == 'cor':  # bit of a hack fix for coronal data
+            self.image_volume.SetDirection((1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, -1.0, 0.0))
+            self.image_volume.SetOrigin((self.image_volume.GetOrigin()[0], self.image_volume.GetOrigin()[2],
+                                         self.image_volume.GetOrigin()[1]))
 
     # todo: write function to take self.image_volume and turn it into slices
     def compile_slices_from_volume(self):
@@ -442,6 +457,7 @@ class Volume:
             s.registration = SliceTranslation(parent_slice=s)
 
     def resample_slices_to_common_origin(self):
+        """For volumes that have multiple origins, resample to most common origin for each slice """
         origin_counts = Counter(s.image.GetOrigin() for s in self.slices)
         most_common_origin = origin_counts.most_common(1)[0][0]
 
@@ -454,6 +470,54 @@ class Volume:
             resampling_filter.SetReferenceImage(ref_image)
             resampling_filter.SetTransform(sitk.Transform())
             s.image = resampling_filter.Execute(s.image)
+
+    def reformat_to_axial(self, print_results=True):
+        if self.orientation == 'tra':
+            raise ValueError("Volume is already in transaxial orientation!")
+
+        if self.image_volume is None:
+            self.compile_volume_from_slices()
+
+        spacing = (self.image_volume.GetSpacing()[0], self.image_volume.GetSpacing()[2],
+                   self.image_volume.GetSpacing()[1])
+        size = (self.image_volume.GetSize()[0], self.image_volume.GetSize()[2], self.image_volume.GetSize()[1])
+        direction = (1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0)
+
+        origin = (self.image_volume.GetOrigin()[0], self.image_volume.GetOrigin()[1],
+                  self.image_volume.GetOrigin()[2] - self.image_volume.GetSpacing()[1] * self.image_volume.GetSize()[1])
+
+        resample = sitk.ResampleImageFilter()
+        resample.SetOutputSpacing(spacing)
+        resample.SetSize(size)
+        resample.SetOutputDirection(direction)
+        resample.SetOutputOrigin(origin)
+        resample.SetTransform(sitk.Transform())
+        resample.SetDefaultPixelValue(0)
+        resample.SetInterpolator(sitk.sitkLinear)
+
+        # quick function for rounding tuples:
+        round_tuple = lambda t, n=2: tuple(round(e, n) for e in t)
+
+        # record these values before execution for comparison
+        old_direction = self.image_volume.GetDirection()
+        old_origin = round_tuple(self.image_volume.GetOrigin())
+        old_spacing = round_tuple(self.image_volume.GetSpacing())
+        old_size = self.image_volume.GetSize()
+
+        self.image_volume = resample.Execute(self.image_volume)
+        print(f'{self.name} reformatted to axial')
+
+        new_direction = self.image_volume.GetDirection()
+        new_origin = round_tuple(self.image_volume.GetOrigin())
+        new_spacing = round_tuple(self.image_volume.GetSpacing())
+        new_size = self.image_volume.GetSize()
+
+        if print_results:
+            print(f'------- Reformating {self.name} -------')
+            print('Direction:', old_direction, '---->', new_direction)
+            print('Origin:', old_origin, '---->', new_origin)
+            print('Spacing:', old_spacing, '---->', new_spacing)
+            print('Size:', old_size, '---->', new_size, '\n')
 
 
 class Slice:
@@ -476,6 +540,14 @@ class Slice:
             vol = reader.Execute()
             img = sitk.Extract(vol, (vol.GetWidth(), vol.GetHeight(), 0), (0, 0, 0))  # get 2D image from 3D image
 
+            if vol.GetDirection() == (1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0):
+                pass
+
+            if vol.GetDirection() == (1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, -1.0, 0.0):
+                img.SetOrigin((vol.GetOrigin()[0], vol.GetOrigin()[2]))
+                # hack fix for coronal data such that the x, z location of the upper left hand
+                # part of the 2D image is stored as an x, y coordinate
+
             # https://discourse.itk.org/t/set-photometric-interpretation-for-gdcmimageio-as-monochrome2-in-simpleitk/3073/6
             photometric_interpretation = reader.GetMetaData('0028|0004').strip()
             if photometric_interpretation == 'MONOCHROME1':
@@ -485,7 +557,7 @@ class Slice:
 
             self.image = img
 
-            if not self.volume.dcm_reader:
+            if self.volume and not self.volume.dcm_reader:
                 self.volume.dcm_reader = reader  # keep one reader for volume to make writing DICOMs easy
 
     def display_slice(self, grid=True, text=True):
