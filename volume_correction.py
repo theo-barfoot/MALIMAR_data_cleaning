@@ -3,7 +3,7 @@ import pydicom
 from pydicom.errors import InvalidDicomError
 import SimpleITK as sitk
 from tqdm import tqdm
-from itertools import compress
+from itertools import compress, cycle, islice
 from more_itertools import run_length
 import numpy as np
 import matplotlib.pyplot as plt
@@ -16,6 +16,7 @@ from matplotlib.patches import Rectangle
 from registration_tools import VolumeSliceTranslation, SliceTranslation
 from identify_dicom import DICOMName
 from dicom_writer import write_dcm_series
+import coronal_tools
 
 
 class VolumeCollection:
@@ -164,6 +165,10 @@ class VolumeCollection:
     def reformat_to_axial(self):
         for volume in self.volumes.values():
             volume.reformat_to_axial()
+
+    def stitch_coronal_slices(self):
+        for volume in self.volumes.values():
+            volume.stitch_coronal_slices()
 
     def info(self):
         for volume in self.volumes.values():
@@ -389,7 +394,8 @@ class Volume:
                                          self.image_volume.GetOrigin()[1]))
 
     # todo: write function to take self.image_volume and turn it into slices
-    def compile_slices_from_volume(self):
+    def compile_slices_from_volume(self, orientation='tra'):
+        
         pass
 
     def write_to_nifti(self):
@@ -478,46 +484,28 @@ class Volume:
         if self.image_volume is None:
             self.compile_volume_from_slices()
 
-        spacing = (self.image_volume.GetSpacing()[0], self.image_volume.GetSpacing()[2],
-                   self.image_volume.GetSpacing()[1])
-        size = (self.image_volume.GetSize()[0], self.image_volume.GetSize()[2], self.image_volume.GetSize()[1])
-        direction = (1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0)
+        print(f'------- Reformating {self.name} -------')
+        self.image_volume = coronal_tools.reformat_to_axial(self.image_volume)
 
-        origin = (self.image_volume.GetOrigin()[0], self.image_volume.GetOrigin()[1],
-                  self.image_volume.GetOrigin()[2] - self.image_volume.GetSpacing()[1] * self.image_volume.GetSize()[1])
+    def stitch_coronal_slices(self):
+        if self.orientation == 'tra':
+            raise ValueError("Volume is in transaxial orientation!")
 
-        resample = sitk.ResampleImageFilter()
-        resample.SetOutputSpacing(spacing)
-        resample.SetSize(size)
-        resample.SetOutputDirection(direction)
-        resample.SetOutputOrigin(origin)
-        resample.SetTransform(sitk.Transform())
-        resample.SetDefaultPixelValue(0)
-        resample.SetInterpolator(sitk.sitkLinear)
+        num_stations = len(set(s.image.GetOrigin()[1] for s in self.slices))
+        c = cycle(self.slices)
+        stitched_slices = []
+        for i in range(int(len(self) / num_stations)):
+            unstitched_slices = list(islice(c, num_stations))
+            unstitched_images = [s.image for s in unstitched_slices]
+            slice_location = unstitched_slices[0].slice_location
+            stitched_image = coronal_tools.stitch(unstitched_images, slice_location)
+            stitched_slice = Slice(parent_volume=self, slice_location=slice_location)
+            stitched_slice.image = stitched_image
+            stitched_slices.append(stitched_slice)
 
-        # quick function for rounding tuples:
-        round_tuple = lambda t, n=2: tuple(round(e, n) for e in t)
-
-        # record these values before execution for comparison
-        old_direction = self.image_volume.GetDirection()
-        old_origin = round_tuple(self.image_volume.GetOrigin())
-        old_spacing = round_tuple(self.image_volume.GetSpacing())
-        old_size = self.image_volume.GetSize()
-
-        self.image_volume = resample.Execute(self.image_volume)
-        print(f'{self.name} reformatted to axial')
-
-        new_direction = self.image_volume.GetDirection()
-        new_origin = round_tuple(self.image_volume.GetOrigin())
-        new_spacing = round_tuple(self.image_volume.GetSpacing())
-        new_size = self.image_volume.GetSize()
-
-        if print_results:
-            print(f'------- Reformating {self.name} -------')
-            print('Direction:', old_direction, '---->', new_direction)
-            print('Origin:', old_origin, '---->', new_origin)
-            print('Spacing:', old_spacing, '---->', new_spacing)
-            print('Size:', old_size, '---->', new_size, '\n')
+        self.slices = stitched_slices
+        self.sort_slice_order()
+        self.calculate_slice_intervals()
 
 
 class Slice:

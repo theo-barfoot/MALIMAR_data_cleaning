@@ -37,18 +37,18 @@ class XNATDownloader:
                 elif volume_name.sequence == 'dwi':
                     self.dwi.append(scan)
 
-    def download_scans(self):
+    def download_scans(self, verbose=True):
         os.mkdir(self.path)
         download_folder = os.path.join(self.path, 'input')
         os.mkdir(download_folder)
         for scan in self.dix:
             print(scan)
             time.sleep(.3)
-            scan.download_dir(os.path.join(download_folder, 'dix'))
+            scan.download_dir(os.path.join(download_folder, 'dix'), verbose=verbose)
         for scan in self.dwi:
             print(scan)
             time.sleep(.3)
-            scan.download_dir(os.path.join(download_folder, 'dwi'))
+            scan.download_dir(os.path.join(download_folder, 'dwi'), verbose=verbose)
 
 
 class XNATUploader:
