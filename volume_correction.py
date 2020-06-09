@@ -27,7 +27,6 @@ class VolumeCollection:
         self.load_dicom_files()
 
         for volume_name, volume in self.volumes.items():
-            volume.sort_slice_order()
             volume.calculate_slice_intervals()
 
         # todo: take input of HFS or otherwise and define slice order for instance numbers in DICOM header
@@ -181,7 +180,6 @@ class Volume:
         self.vol_collection = parent
         self.name = name
         self.slices = []
-        self.slices_ordered = False
         self.dcm_header = dcm_header
         self.dcm_reader = None
         self.orientation = None
@@ -209,13 +207,10 @@ class Volume:
     def sort_slice_order(self):
         """Sort slices in descending order of slice location - superior to inferior for head first scan"""
         self.slices.sort(key=lambda s: s.slice_location, reverse=True)
-        self.slices_ordered = True
 
     def calculate_slice_intervals(self):
         """Calculate intervals between ordered slices"""
-        if not self.slices_ordered:
-            self.sort_slice_order()
-
+        self.sort_slice_order()
         for i in range(len(self)-1):
             interval = self.slices[i+1].slice_location - self.slices[i].slice_location
             self.slices[i].slice_interval = round(abs(interval), 2)
@@ -260,14 +255,28 @@ class Volume:
         # in-place object in list deletion taken from:
         # https://stackoverflow.com/questions/8312829/how-to-remove-item-from-a-python-list-in-a-loop
         # todo: need to edit code so that it can handle when there are no duplicates
-        selectors = (s.slice_interval != 0 for s in self.slices)
-        for i, s in enumerate(compress(self.slices, selectors)):  # enumerate slices with interval > 0
-            self.slices[i] = s  # move found slices to beginning of the list, without resizing
+
+        selectors = [True for s in self.slices]
+        for i in range(len(self.slices) - 1):
+            if self.slices[i].slice_interval == 0:
+                total = sitk.GetArrayFromImage(self.slices[i].image).sum()
+                total_next = sitk.GetArrayFromImage(self.slices[i + 1].image).sum()
+                if total < total_next:
+                    selectors[i] = False
+                else:
+                    selectors[i + 1] = False
+
+        num_before = len(self)
+        self.slices = list(compress(self.slices, selectors))
+        num_after = len(self)
+
+        self.calculate_slice_intervals()
 
         if print_results:
             num_duplicated_slices = len(self.slices[i+1:])
-            print('{} duplicated slices removed from {}'.format(num_duplicated_slices, self.name))
-        del self.slices[i+1:]  # trim the end of the list
+            print('{} duplicated slices removed from {}'.format(num_before - num_after, self.name))
+
+
 
     def find_contiguous_block(self, print_results=True):
         """Find and label the largest consecutive group of contiguous slices and return indices """
@@ -343,13 +352,10 @@ class Volume:
         self.calculate_empty_slices()
 
         selectors = (s.contiguous is True for s in self.slices)
-        for i, s in enumerate(compress(self.slices, selectors)):  # enumerate contiguous slices
-            self.slices[i] = s  # move found slices to beginning of the list, without resizing
-        del self.slices[i + 1:]  # trim the end of the list, removing non-contiguous slices
+        self.slices = list(compress(self.slices, selectors))
 
         if print_results:
             print(f'{num_new_slices} slices resampled (linear interpolation) \n')
-        # todo: need to think about when the self.slices_ordered is not true
         self.calculate_slice_intervals()
 
     def calculate_empty_slices(self):
@@ -515,6 +521,7 @@ class Slice:
         self.slice_location = slice_location
         self.slice_interval = None
         self.image = None
+        self.duplicate = False
         self.contiguous = contiguous
         self.registration = None
         self.load_sitk_image()
