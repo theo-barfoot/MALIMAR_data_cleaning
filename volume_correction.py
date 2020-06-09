@@ -256,6 +256,8 @@ class Volume:
         # https://stackoverflow.com/questions/8312829/how-to-remove-item-from-a-python-list-in-a-loop
         # todo: need to edit code so that it can handle when there are no duplicates
 
+        self.calculate_slice_intervals()
+
         selectors = [True for s in self.slices]
         for i in range(len(self.slices) - 1):
             if self.slices[i].slice_interval == 0:
@@ -273,14 +275,11 @@ class Volume:
         self.calculate_slice_intervals()
 
         if print_results:
-            num_duplicated_slices = len(self.slices[i+1:])
             print('{} duplicated slices removed from {}'.format(num_before - num_after, self.name))
-
-
 
     def find_contiguous_block(self, print_results=True):
         """Find and label the largest consecutive group of contiguous slices and return indices """
-
+        self.calculate_slice_intervals()
         # create list of slice intervals:
         intervals = [s.slice_interval for s in self.slices]
         # Run length encoding to group consecutive equal slice intervals in list of tuples: [(interval, count), ...]:
@@ -296,12 +295,12 @@ class Volume:
         start_idx = sum([x[1] for x in groups][:index_in_groups])
         end_idx = sum([x[1] for x in groups][:index_in_groups + 1])
 
-        for i in range(start_idx, end_idx + 1):
-            self.slices[i].contiguous = True
+        # for i in range(start_idx, end_idx + 1):
+        #     self.slices[i].contiguous = True
 
-        # Find additional contiguous slices away from main block
+        # Label contiguous slices, including those away from the main block:
         for s in self.slices:
-            if (s.slice_location - self.slices[start_idx].slice_location) % self.slice_thickness == 0:
+            if round(s.slice_location - self.slices[start_idx].slice_location, 2) % self.slice_thickness == 0:
                 s.contiguous = True
 
         if print_results:
@@ -337,14 +336,14 @@ class Volume:
 
         # instantiate new contiguous slices
         num_new_slices = 0
-        slice_locs = [s.slice_location for s in self.slices]
+        slice_locs = [round(s.slice_location, 2) for s in self.slices]
         for slice_loc in np.arange(start_location + self.slice_thickness, first_slice_location, self.slice_thickness):
-            if slice_loc not in slice_locs:
+            if round(slice_loc, 2) not in slice_locs:
                 self.slices.append(Slice(self, dcm_path=None, slice_location=slice_loc, contiguous=True))
                 num_new_slices += 1
 
         for slice_loc in np.arange(end_location - self.slice_thickness, last_slice_location, -self.slice_thickness):
-            if slice_loc not in slice_locs:
+            if round(slice_loc, 2) not in slice_locs:
                 self.slices.append(Slice(self, dcm_path=None, slice_location=slice_loc, contiguous=True))
                 num_new_slices += 1
 
@@ -356,6 +355,7 @@ class Volume:
 
         if print_results:
             print(f'{num_new_slices} slices resampled (linear interpolation) \n')
+
         self.calculate_slice_intervals()
 
     def calculate_empty_slices(self):
@@ -521,7 +521,6 @@ class Slice:
         self.slice_location = slice_location
         self.slice_interval = None
         self.image = None
-        self.duplicate = False
         self.contiguous = contiguous
         self.registration = None
         self.load_sitk_image()
