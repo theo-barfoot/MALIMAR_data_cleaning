@@ -39,11 +39,11 @@ class DICOMName:
                         self.series = 'fat'
 
                     elif dcm_header.ManufacturerModelName == 'Aera':
-                        if 'IN_PHASE' in dcm_header.ImageType:
+                        if 'IN_PHASE' in dcm_header.ImageType or 'in' in dcm_header.SeriesDescription.lower():
                             self.sequence = 'dix'
                             self.series = 'in'
 
-                        elif 'OUT_PHASE' in dcm_header.ImageType:
+                        elif 'OUT_PHASE' in dcm_header.ImageType or 'opp' in dcm_header.SeriesDescription.lower():
                             self.sequence = 'dix'
                             self.series = 'out'
 
