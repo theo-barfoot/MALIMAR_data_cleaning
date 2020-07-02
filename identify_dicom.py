@@ -13,7 +13,11 @@ class DICOMName:
                         try:
                             b_val = str(int(dcm_header[0x19, 0x100c].value))  # RMH Aera
                         except KeyError:
-                            b_val = str(int(dcm_header.MRDiffusionSequence[0][0x18, 0x9087].value))  # ICH Aera
+                            try:
+                                b_val = str(int(dcm_header.MRDiffusionSequence[0][0x18, 0x9087].value))  # ICH Aera
+                            except AttributeError:
+                                # Old RMH Aera DWIs require same rule as Avanto DWI:
+                                b_val = ''.join([s for s in dcm_header.SequenceName if s.isdigit()])
 
                     elif dcm_header.ManufacturerModelName == 'Avanto':
                         b_val = ''.join([s for s in dcm_header.SequenceName if s.isdigit()])  # RMH Avanto
@@ -28,7 +32,7 @@ class DICOMName:
                     raise ValueError("Unknown DWI image!")  # todo: should this be NameError?
 
             elif 'fl3d2' in dcm_header.SequenceName:
-                if ('ADD' or 'DIV') not in dcm_header.ImageType:  # todo: need to make sure this doesn't cause issue
+                if 'ADD' not in dcm_header.ImageType:  # or 'DIV'?
                     if ('WATER' in dcm_header.ImageType) or (
                             dcm_header.ScanOptions and dcm_header.ScanOptions == 'DIXW'):
                         self.sequence = 'dix'
@@ -39,11 +43,13 @@ class DICOMName:
                         self.series = 'fat'
 
                     elif dcm_header.ManufacturerModelName == 'Aera':
-                        if 'IN_PHASE' in dcm_header.ImageType or 'in' in dcm_header.SeriesDescription.lower():
+                        if 'IN_PHASE' in dcm_header.ImageType or (
+                                any(s in dcm_header.SeriesDescription.lower() for s in ['in'])):  # sometimes ip needed
                             self.sequence = 'dix'
                             self.series = 'in'
 
-                        elif 'OUT_PHASE' in dcm_header.ImageType or 'opp' in dcm_header.SeriesDescription.lower():
+                        elif 'OUT_PHASE' in dcm_header.ImageType or (
+                                any(s in dcm_header.SeriesDescription.lower() for s in ['op', 'opp', 'out'])):
                             self.sequence = 'dix'
                             self.series = 'out'
 

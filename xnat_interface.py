@@ -2,6 +2,7 @@ import xnat
 from identify_dicom import DICOMName
 import os
 import time
+from xnat.exceptions import XNATResponseError
 
 
 class XNATDownloader:
@@ -52,11 +53,11 @@ class XNATDownloader:
 
 
 class XNATUploader:
-    def __init__(self, project, path):
+    def __init__(self, project, path, mr_session_id=None):
         self.project = project
         self.path = path
         self.connection = project.xnat_session
-        self.mr_session = None
+        self.mr_session = self.project.experiments[mr_session_id] if mr_session_id else None
 
     def upload_dicom(self):
         print(f'Uploading DICOMs to {self.connection._original_uri}')
@@ -104,8 +105,39 @@ class XNATUploader:
                 self.mr_session.fields[key] = value
 
     def upload_cleaning_notebook(self):
-        uri = f'{self.mr_session.uri}/resources/cleaning_report'
+
+        mr_session = self.mr_session.xnat_session.experiments[self.mr_session.label]  # required to stop error
+        # self.mr_session.uri causes a XNATResponseError error
+        uri = f'{mr_session.uri}/resources/cleaning_report'
         self.connection.put(uri)
+
         self.mr_session.clearcache()
         path = 'cleaning_notebook.html'
         self.mr_session.resources['cleaning_report'].upload(data=os.path.join(self.path, path), remotepath=path)
+
+    def replace_dicom(self):
+        # delete scans:
+        print(f'Deleting Scans (DICOM and NIfTI) from {self.connection._original_uri}')
+        for scan in self.mr_session.scans.values():
+            print(f'{scan} deleted')
+            scan.delete()
+
+        print(f'Uploading DICOMs to {self.connection._original_uri}')
+        self.connection.services.import_(os.path.join(self.path, 'output/dicom.zip'),
+                                         project=self.project.id, experiment=self.mr_session.label,
+                                         overwrite='delete', destination='/archive')
+
+
+def download_segmentations(*, mr_session, path, status='verified'):
+    res = mr_session.resources['segmentations_' + status]
+    seg_paths = {}
+    for name, seg in res.files.items():
+        print('Downloading', name, 'segmentation')
+        sequence = name.split('_')[0]
+        extension = '.' + '.'.join(name.split('.')[-2:])
+        filename = sequence + '_seg' + extension
+        filepath = os.path.join(path, filename)
+        seg.download(filepath, verbose=False)
+        seg_paths[sequence] = filepath
+
+    return seg_paths

@@ -118,13 +118,17 @@ class VolumeCollection:
         for volume in self.volumes.values():
             volume.write_to_dicom(**modified_tags)
 
-    def open_in_itk_snap(self):
-        # self.write_to_nifti()
+    def open_in_itk_snap(self, seg_path=None):
         FNULL = open(os.devnull, 'w')
         path = os.path.join(self.sup_folder, 'output/nifti/')
         paths = [path + volume.name + '.nii.gz' for volume in self.volumes.values()]
-        _ = subprocess.run(["itksnap", "-g", paths[0], "-o", *paths[1:]],
-                                 stdout=FNULL, stderr=subprocess.STDOUT)
+
+        if seg_path:
+            _ = subprocess.run(["itksnap", "-g", paths[0], "-o", *paths[1:], "-s", seg_path, "-l",  "segs.label"],
+                               stdout=FNULL, stderr=subprocess.STDOUT)
+        else:
+            _ = subprocess.run(["itksnap", "-g", paths[0], "-o", *paths[1:]],
+                               stdout=FNULL, stderr=subprocess.STDOUT)
 
     def display_slice_locations(self):
         """Create 4x1 subplot array and populate axis with patch collection of rectangles representing slices """
@@ -184,7 +188,7 @@ class Volume:
         self.dcm_reader = None
         self.orientation = None
         self.check_direction()
-        self.slice_thickness = float(dcm_header.SliceThickness)
+        self.slice_thickness = round(float(dcm_header.SliceThickness), 2)
         self.image_volume = None
         self.registration = None
         # todo: going to need to think hard about how coronal data will be managed
@@ -430,7 +434,7 @@ class Volume:
 
         print(f'{self.name} saved as NIfTI file')
 
-    def open_in_itk_snap(self):
+    def open_in_itk_snap(self, seg_path=None):
         self.write_to_nifti()
         FNULL = open(os.devnull, 'w')
 
@@ -438,7 +442,12 @@ class Volume:
         output_folder_nifti = os.path.join(output_folder, 'nifti')
 
         path = os.path.join(output_folder_nifti, self.name) + '.nii.gz'
-        _ = subprocess.run(["itksnap", "-g", path], stdout=FNULL, stderr=subprocess.STDOUT)
+
+        if seg_path:
+            _ = subprocess.run(["itksnap", "-g", path, "-s", seg_path, "-l",  "segs.label"],
+                               stdout=FNULL, stderr=subprocess.STDOUT)
+        else:
+            _ = subprocess.run(["itksnap", "-g", path], stdout=FNULL, stderr=subprocess.STDOUT)
 
     def write_to_dicom(self, **modified_tags):
         write_dcm_series(self, path=self.vol_collection.sup_folder, **modified_tags)
