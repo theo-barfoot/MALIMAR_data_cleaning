@@ -1,7 +1,6 @@
 import SimpleITK as sitk
 from functools import reduce
 from registration_tools import register_station
-from math import ceil
 
 
 def reformat_to_axial(image_volume, print_results=True):
@@ -81,7 +80,7 @@ def remove_bottom_overlap(images):
     bottom_cropped_images = []
     for i in range(len(images) - 1):
         size = (images[i].GetOrigin()[2] - (images[i + 1].GetOrigin()[2])) / images[0].GetSpacing()[1]
-        bottom_cropped_images.append(images[i][:, :ceil(size), :])
+        bottom_cropped_images.append(images[i][:, :round(size), :])
     bottom_cropped_images.append(images[-1])
     return bottom_cropped_images
 
@@ -118,7 +117,7 @@ def combine_stations(stations):
 def split_volume_into_stations(vol, num_stations=3, overlap=0.01):
     station_height = vol.GetHeight()//3
     overlap_height = int(vol.GetHeight()*overlap)
-    stations = [vol[:, i*station_height:(i+1)*station_height +overlap_height, :] for i in range(num_stations-1)]
+    stations = [vol[:, i*station_height:(i+1)*station_height + overlap_height, :] for i in range(num_stations-1)]
     stations.append(vol[:, (num_stations-1)*station_height:, :])
     return stations
 
@@ -126,11 +125,11 @@ def split_volume_into_stations(vol, num_stations=3, overlap=0.01):
 def remove_empty_slices(station):
     array = sitk.GetArrayFromImage(station)
     height = station.GetHeight()
-    empty_slices = [s for s in range(height) if array[:,s,:].max() == 0]
+    empty_slices = [s for s in range(height) if array[:, s, :].max() == 0]
     if empty_slices:
         lower = max(empty_slices) + 1 if max(empty_slices) < height/2 else 0
         upper = min(empty_slices) if min(empty_slices) > height/2 else height
-        station = station[:,lower:upper,:]
+        station = station[:, lower:upper, :]
     return station
 
 
