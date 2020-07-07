@@ -142,24 +142,52 @@ class VolumeCollection:
         #     if not ax.collections:
         #         ax.axis('off')
 
-    #todo: improve this function later on, when time permits
-    def resample_volumes_to_match(self):
-        # todo: danger here is that recompiling volume will over-write these changes, so need to write function that
-        # compiles slices from volume after this operation has been performed.
-        sizes = []
-        spacings = []
-        origins = []
+    def resample_volumes_to_match(self, print_results=True):
+        img_vols = []
         for volume in self.volumes.values():
             if volume.image_volume is None:
                 volume.compile_volume_from_slices()
-            sizes.append(volume.image_volume.GetSize())
-            spacings.append(volume.image_volume.GetSpacing())
-            origins.append(volume.image_volume.GetOrigin())
+            img_vols.append(volume.image_volume)
 
-        if len({len(set(sizes)), len(set(spacings)), len(set(origins))}) > 1:
-            raise ValueError("Volumes do not have same sampling!")
-        else:
-            print('All volumes in volume collection have same sampling')
+        # Get innermost origin and innermost extent (smallest common volume)
+
+        origin = tuple(np.max([img_vol.GetOrigin()[i] for img_vol in img_vols]) for i in range(3))
+        extent = tuple(np.min([img_vol.GetSize()[i] * img_vol.GetSpacing()[i] for img_vol in img_vols]) for i in range(3))
+
+        for volume in self.volumes.values():
+            img_vol = volume.image_volume
+            spacing = img_vol.GetSpacing()
+            new_size = tuple(int(round(extent / spacing, 0)) for extent, spacing in zip(extent, spacing))
+
+            resample = sitk.ResampleImageFilter()
+            resample.SetOutputSpacing(spacing)
+            resample.SetSize(new_size)
+            resample.SetOutputDirection(img_vol.GetDirection())
+            resample.SetOutputOrigin(origin)
+            resample.SetTransform(sitk.Transform())
+            resample.SetDefaultPixelValue(0)
+            resample.SetInterpolator(sitk.sitkLinear)
+
+            # quick function for rounding tuples:
+            round_tuple = lambda t, n=2: tuple(round(e, n) for e in t)
+
+            # record these values before execution for comparison
+            old_origin = round_tuple(img_vol.GetOrigin())
+            old_extent = round_tuple(tuple(sp * si for sp, si in zip(img_vol.GetSpacing(), img_vol.GetSize())))
+            old_size = round_tuple(img_vol.GetSize())
+
+            volume.image_volume = resample.Execute(img_vol)
+
+            new_origin = round_tuple(volume.image_volume.GetOrigin())  # todo: set as vol.image_vol to really check
+            new_extent = round_tuple(tuple(sp * si for sp, si in zip(volume.image_volume.GetSpacing(),
+                                                                     volume.image_volume.GetSize())))
+            new_size = round_tuple(volume.image_volume.GetSize())
+
+            if print_results:
+                print(f'------- Resampling {volume.name} -------')
+                print('Origin:', old_origin, '---->', new_origin)
+                print('Extent:', old_extent, '---->', new_extent)
+                print('Size:', old_size, '---->', new_size, '\n')
 
     def resample_slices_to_common_origin(self):
         for volume in self.volumes.values():
@@ -172,6 +200,19 @@ class VolumeCollection:
     def stitch_coronal_slices(self):
         for volume in self.volumes.values():
             volume.stitch_coronal_slices()
+
+    def register_coronal_stations(self, *, reference_name, num_stations=3):
+        for volume in self.volumes.values():
+            if volume.image_volume is None:
+                volume.compile_volume_from_slices()
+
+        reference = self.volumes[reference_name]
+        for volume in self.volumes.values():
+            if volume is not reference:
+                print(f'Registering {num_stations} stations of {volume.name} volume to {reference.name} volume')
+                volume.image_volume = coronal_tools.register_stations_in_volume(volume.image_volume,
+                                                                                reference.image_volume,
+                                                                                num_stations=num_stations)
 
     def info(self):
         for volume in self.volumes.values():

@@ -184,3 +184,34 @@ class SliceTranslation:
     # self.registration_method.SmoothingSigmasAreSpecifiedInPhysicalUnitsOn()
 
 
+def register_station(fixed, moving):
+    num_bins, sampling_percentage, sampling_seed = 50, 0.5, sitk.sitkWallClock
+    learning_rate, min_step, num_iter = 1.0, .001, 200
+
+    registration_method = sitk.ImageRegistrationMethod()
+    registration_method.SetMetricAsMattesMutualInformation(numberOfHistogramBins=50)
+    registration_method.SetMetricSamplingPercentage(sampling_percentage, sampling_seed)
+    registration_method.SetMetricSamplingStrategy(registration_method.RANDOM)
+    registration_method.SetOptimizerAsRegularStepGradientDescent(learning_rate, min_step, num_iter)
+    registration_method.SetInitialTransform(sitk.TranslationTransform(3))
+    registration_method.SetInterpolator(sitk.sitkLinear)
+    registration_method.SetOptimizerScalesFromPhysicalShift()
+
+    resampling_filter = sitk.ResampleImageFilter()
+    resampling_filter.SetInterpolator(sitk.sitkLinear)
+    resampling_filter.SetDefaultPixelValue(0)
+
+    moving = sitk.Cast(moving, sitk.sitkFloat32)
+    fixed = sitk.Cast(fixed, sitk.sitkFloat32)
+
+    transformation = registration_method.Execute(fixed, moving)
+
+    resampling_filter.SetReferenceImage(fixed)
+    resampling_filter.SetTransform(transformation)
+    moved = resampling_filter.Execute(moving)
+    round_tuple = lambda t, n=2: tuple(round(e, n) for e in t)
+    translation = round_tuple(transformation.GetParameters())
+    print(f'Translation (mm) (x,y,z) = {translation}')
+    return sitk.Cast(moved, sitk.sitkUInt16)
+
+
