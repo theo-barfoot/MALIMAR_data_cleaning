@@ -246,7 +246,12 @@ class Volume:
 
     def add_slice(self, dcm_path, dcm_header):
         """Add new Slice object to Volume slices list"""
-        slice_location = float(dcm_header.SliceLocation)
+        # slice_location = float(dcm_header.SliceLocation)  # Doesn't work for some old coronal data...
+        if self.orientation == 'tra':
+            slice_location = float(dcm_header.ImagePositionPatient[2])
+        elif self.orientation == 'cor':
+            slice_location = float(dcm_header.ImagePositionPatient[1])
+
         self.slices.append(Slice(self, dcm_path, slice_location))
 
     def sort_slice_order(self):
