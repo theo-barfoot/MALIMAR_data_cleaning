@@ -264,6 +264,7 @@ class Volume:
         for i in range(len(self)-1):
             interval = self.slices[i+1].slice_location - self.slices[i].slice_location
             self.slices[i].slice_interval = round(abs(interval), 2)
+        self.slices[-1].slice_interval = None
 
     def info(self, display_order=False):
         print('-' * 5, self.name, 'volume', '-' * 5)
@@ -434,8 +435,11 @@ class Volume:
         return self.slices[slice_idx]
 
     def compile_volume_from_slices(self):
-        # todo: add warning if slice interval is non constant - can still compile though
+        if len(set([s.slice_interval for s in self.slices if s.slice_interval is not None])) > 1:
+            raise ValueError(f'{self.name} volume is not contiguous!')
+
         if len(Counter(s.image.GetOrigin() for s in self.slices)) > 1:
+            print(f'Resampling {self.name} volume to common origin!')
             self.resample_slices_to_common_origin()
 
         images = [s.image for s in self.slices]
@@ -691,6 +695,25 @@ def match_fovs_between_collections(*collections, print_results=True):
                 print('Origin:', old_origin, '---->', new_origin)
                 print('Extent:', old_extent, '---->', new_extent)
                 print('Size:', old_size, '---->', new_size, '\n')
+
+
+def force_orientation_to_orthogonal(path, cor=False):
+    orientations = set()
+    for path in VolumeCollection.walk_directory(path):
+        try:
+            dcm = pydicom.dcmread(path)
+            orientations.add(str(dcm.ImageOrientationPatient))
+            dcm.ImageOrientationPatient = [1, 0, 0, 0, 0, -1] if cor else [1, 0, 0, 0, 1, 0]
+            pydicom.dcmwrite(path, dcm)
+        except InvalidDicomError:
+            pass
+
+    print(f'Previous orientation(s): {orientations}')
+    if cor:
+        print('New orientation: [1, 0, 0, 0, 0, -1]')
+    else:
+        print('New orientation: [1, 0, 0, 0, 1, 0]')
+
 
 
 

@@ -19,7 +19,7 @@ class XNATDownloader:
     def identify_scans(self):
 
         def scan_is_composed(dcm_header, frames):
-            return ('COMPOSED' in dcm_header.ImageType) or (frames > 120)
+            return ('COMPOSED' in dcm_header.ImageType) or (frames > 120 and 'DERIVED' in dcm_header.ImageType)
 
         for scan in self.mr_session.scans.values():
             volume_name = None
@@ -88,10 +88,13 @@ class XNATUploader:
             scan.resources['NIFTI'].upload(os.path.join(self.path, 'output/nifti/') + scan.series_description + '.nii.gz',
                                            scan.series_description + '.nii.gz')
 
-    def upload_session_vars(self, **session_vars):
+    def upload_session_vars(self, include_defaults=True, **session_vars):
         print('-- Uploading Session Variables --')
-        defaults = {'roi_done_theo': 'No', 'roi_done_maira': 'No', 'roi_signed_off_andrea': 'No',
-                    'disease_labelled_andrea': 'No'}
+        if include_defaults:
+            defaults = {'roi_done_theo': 'No', 'roi_done_maira': 'No', 'roi_signed_off_andrea': 'No',
+                        'disease_labelled_andrea': 'No'}
+        else:
+            defaults = {}
 
         session_vars = {**defaults, **session_vars}  # defaults will be overwritted if in session_vars
 

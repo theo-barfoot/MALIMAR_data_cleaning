@@ -3,8 +3,8 @@ import shutil
 import os
 
 
-def get_icht_case_variables(trial_number):
-    df = pd.read_excel('patients_phase1_ICH.xlsx')
+def get_icht_case_variables(trial_number, *, phase):
+    df = pd.read_excel(f'patients_phase{phase}_ICH.xlsx')
     row = df[df['Trial Number'] == trial_number]
 
     # patient tags required for editing DICOM headers of ICHT data
@@ -25,9 +25,12 @@ def get_icht_case_variables(trial_number):
     return patient_tags, session_vars
 
 
-def get_rmh_case_variables(mr_id):
-    df = pd.read_excel('patients_phase1_RMH.xlsx')
+def get_rmh_case_variables(mr_id, hv=False, *, phase):
+    group = 'hvs' if hv else 'patients'
+    df = pd.read_excel(f'{group}_phase{phase}_RMH.xlsx')
     row = df[df['MR Session ID XNAT_Colab'] == mr_id]
+    if len(row) == 0:
+        raise ValueError('MR ID Not found!')
 
     session_vars = {'disease_pattern': row['Disease Pattern'].iloc[0],
                     'disease_category': row['Disease Category'].iloc[0],
@@ -38,6 +41,9 @@ def get_rmh_case_variables(mr_id):
                     'Age': int(row['Age'].iloc[0])}
 
     session_vars = {k: v for k, v in session_vars.items() if pd.notna(v)}
+
+    if phase == 3:
+        session_vars.update({'treatment_stage': mr_id.split('_')[0].lower()})
 
     return session_vars
 

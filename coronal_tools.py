@@ -62,7 +62,7 @@ def stitch(unstitched_images: list, slice_location: float):
         size = images_3d[i].GetOrigin()[2] - (
                     images_3d[i - 1].GetOrigin()[2] - images_3d[i - 1].GetSize()[1] * images_3d[i - 1].GetSpacing()[1])
         size = size / images_3d[0].GetSpacing()[1]
-        top_cropped_images.append(images_3d[i][:, int(size):, :])
+        top_cropped_images.append(images_3d[i][:, round(size):, :])
 
     bottom_cropped_combined_image = combine_stations(bottom_cropped_images)
     top_cropped_combined_image = combine_stations(top_cropped_images)
@@ -73,7 +73,7 @@ def stitch(unstitched_images: list, slice_location: float):
     stitched_image_2d = sitk.Extract(stitched_image, (stitched_image.GetWidth(), stitched_image.GetHeight(), 0), (0, 0, 0))
     stitched_image_2d.SetOrigin((stitched_image.GetOrigin()[0], stitched_image.GetOrigin()[2]))
 
-    return stitched_image_2d
+    return sitk.Cast(stitched_image_2d, sitk.sitkUInt16)   
 
 
 def remove_bottom_overlap(images):
